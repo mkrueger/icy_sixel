@@ -117,15 +117,12 @@ impl<W: Write> sixel_output<W> {
     }
 
     pub fn put_node(
-        &mut self,    /* output context */
-        x: &mut i32,  /* header position */
+        &mut self,      /* output context */
+        x: &mut i32,    /* header position */
         np: sixel_node, /* node object */
-        ncolors: i32, /* number of palette colors */
+        ncolors: i32,   /* number of palette colors */
         keycolor: i32,
     ) -> SixelResult<()> {
-
-        println!("put node pal{}, sx{}, mx{}, map{}", np.pal, np.sx, np.mx, np.map.len());
-
         if ncolors != 2 || keycolor == -1 {
             /* designate palette index */
             if self.active_palette != np.pal {
@@ -315,7 +312,6 @@ impl<W: Write> sixel_output<W> {
         }
         let len = ncolors * width as usize;
         self.active_palette = -1;
-        println!("colors:{}", ncolors);
 
         let mut map: Vec<u8> = vec![0; len];
 
@@ -362,7 +358,6 @@ impl<W: Write> sixel_output<W> {
                     return Err(Box::new(SixelError::BadIntegerOverflow));
                 }
                 pix = pixels[(check_integer_overflow + x) as usize] as i32; /* color index */
-                println!("x:{},y{} pix{},", x, y, pix);
                 if pix >= 0 && (pix as usize) < ncolors && pix != keycolor {
                     if pix > i32::MAX / width {
                         /* integer overflow */
@@ -379,7 +374,6 @@ impl<W: Write> sixel_output<W> {
                         " (pix * width > INT_MAX - x)");*/
                         return Err(Box::new(SixelError::BadIntegerOverflow));
                     }
-                    println!("set map at pix:{} width:{} + x:{} to {}\n", pix, width, x, i);
                     map[(pix * width + x) as usize] |= 1 << i;
                 } else if palstate.is_none() {
                     fillable = false;
@@ -391,11 +385,10 @@ impl<W: Write> sixel_output<W> {
                 continue;
             }
             for c in 0..ncolors {
-
                 let mut sx = 0;
                 while sx < width {
                     if map[c * width as usize + sx as usize] == 0 {
-                         sx += 1;
+                        sx += 1;
                         continue;
                     }
                     let mut mx = sx + 1;
@@ -424,21 +417,10 @@ impl<W: Write> sixel_output<W> {
                     np.mx = mx;
                     np.map = map[c * width as usize..].to_vec();
 
-
-                    println!("{}: make node pal {}, sx {}, mx {}, map {}", y, np.pal, np.sx, np.mx, c * width as usize);
-                    for n in 0..width {
-                        print!("0x{:X}, ", np.map[n as usize]);
-                    }
-                    println!();
-
                     self.nodes.insert(0, np);
                     sx = mx - 1;
                     sx += 1;
                 }
-            }
-            println!("nodes:{}", self.nodes.len());
-            for n in &self.nodes  {
-                println!("{}, {}, {}, {}", n.mx, n.sx, n.pal, n.map.len());
             }
 
             if y != 5 {
@@ -448,7 +430,6 @@ impl<W: Write> sixel_output<W> {
             }
             let mut x = 0;
             while self.nodes.len() > 0 {
-
                 let mut np = self.nodes.pop().unwrap();
 
                 if x > np.sx {
@@ -468,8 +449,7 @@ impl<W: Write> sixel_output<W> {
                 }
                 self.put_node(&mut x, np, ncolors as i32, keycolor)?;
 
-
-                let mut ni: i32  = 0;
+                let mut ni: i32 = 0;
                 while ni < self.nodes.len() as i32 {
                     let onode = &self.nodes[ni as usize];
 
@@ -564,12 +544,6 @@ impl<W: Write> sixel_output<W> {
                 dither.apply_palette(pixels, width, height)?
             }
         };
-        for i in 0..width {
-            print!("{:x},", input_pixels[i as usize]);
-        }
-        println!("");
-
-    
         self.encode_header(width, height)?;
         self.encode_body(
             &input_pixels,
@@ -600,21 +574,21 @@ fn dither_func_fs(data: &mut [u8], width: i32) {
     let mut r = data[3 + 0] as i32 + ((error_r * 5) >> 4);
     let mut g = data[3 + 1] as i32 + ((error_g * 5) >> 4);
     let mut b = data[3 + 2] as i32 + ((error_b * 5) >> 4);
-    data[3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
-    r = data[width * 3 - 3 + 0]as i32 + ((error_r * 3) >> 4);
-    g = data[width * 3 - 3 + 1]as i32 + ((error_g * 3) >> 4);
-    b = data[width * 3 - 3 + 2]as i32 + ((error_b * 3) >> 4);
-    data[width * 3 - 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[width * 3 - 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[width * 3 - 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
-    r = data[width * 3 + 0]as i32 + ((error_r * 5) >> 4);
-    g = data[width * 3 + 1]as i32 + ((error_g * 5) >> 4);
-    b = data[width * 3 + 2]as i32 + ((error_b * 5) >> 4);
-    data[width * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[width * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[width * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[3 + 2] = if b > 0xff { 0xff } else { b as u8 };
+    r = data[width * 3 - 3 + 0] as i32 + ((error_r * 3) >> 4);
+    g = data[width * 3 - 3 + 1] as i32 + ((error_g * 3) >> 4);
+    b = data[width * 3 - 3 + 2] as i32 + ((error_b * 3) >> 4);
+    data[width * 3 - 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[width * 3 - 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[width * 3 - 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
+    r = data[width * 3 + 0] as i32 + ((error_r * 5) >> 4);
+    g = data[width * 3 + 1] as i32 + ((error_g * 5) >> 4);
+    b = data[width * 3 + 2] as i32 + ((error_b * 5) >> 4);
+    data[width * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[width * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[width * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
 }
 
 fn dither_func_atkinson(data: &mut [u8], width: i32) {
@@ -635,39 +609,39 @@ fn dither_func_atkinson(data: &mut [u8], width: i32) {
     let mut r = data[(width * 0 + 1) * 3 + 0] as i32 + (error_r >> 3);
     let mut g = data[(width * 0 + 1) * 3 + 1] as i32 + (error_g >> 3);
     let mut b = data[(width * 0 + 1) * 3 + 2] as i32 + (error_b >> 3);
-    data[(width * 0 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 0 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 0 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
-    r = data[(width * 0 + 2) * 3 + 0]as i32 + (error_r >> 3);
-    g = data[(width * 0 + 2) * 3 + 1]as i32 + (error_g >> 3);
-    b = data[(width * 0 + 2) * 3 + 2]as i32 + (error_b >> 3);
-    data[(width * 0 + 2) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 0 + 2) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 0 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
-    r = data[(width * 1 - 1) * 3 + 0]as i32 + (error_r >> 3);
-    g = data[(width * 1 - 1) * 3 + 1]as i32 + (error_g >> 3);
-    b = data[(width * 1 - 1) * 3 + 2]as i32 + (error_b >> 3);
-    data[(width * 1 - 1) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 1 - 1) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 1 - 1) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
-    r = data[(width * 1 + 0) * 3 + 0]as i32 + (error_r >> 3);
-    g = data[(width * 1 + 0) * 3 + 1]as i32 + (error_g >> 3);
-    b = data[(width * 1 + 0) * 3 + 2]as i32 + (error_b >> 3);
-    data[(width * 1 + 0) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 1 + 0) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 1 + 0) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
-    r = data[(width * 1 + 1) * 3 + 0]as i32 + (error_r >> 3);
-    g = data[(width * 1 + 1) * 3 + 1]as i32 + (error_g >> 3);
-    b = data[(width * 1 + 1) * 3 + 2]as i32 + (error_b >> 3);
-    data[(width * 1 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 1 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 1 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
-    r = data[(width * 2 + 0) * 3 + 0]as i32 + (error_r >> 3);
-    g = data[(width * 2 + 0) * 3 + 1]as i32 + (error_g >> 3);
-    b = data[(width * 2 + 0) * 3 + 2]as i32 + (error_b >> 3);
-    data[(width * 2 + 0) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 2 + 0) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 2 + 0) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 0 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 0 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 0 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
+    r = data[(width * 0 + 2) * 3 + 0] as i32 + (error_r >> 3);
+    g = data[(width * 0 + 2) * 3 + 1] as i32 + (error_g >> 3);
+    b = data[(width * 0 + 2) * 3 + 2] as i32 + (error_b >> 3);
+    data[(width * 0 + 2) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 0 + 2) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 0 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
+    r = data[(width * 1 - 1) * 3 + 0] as i32 + (error_r >> 3);
+    g = data[(width * 1 - 1) * 3 + 1] as i32 + (error_g >> 3);
+    b = data[(width * 1 - 1) * 3 + 2] as i32 + (error_b >> 3);
+    data[(width * 1 - 1) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 1 - 1) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 1 - 1) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
+    r = data[(width * 1 + 0) * 3 + 0] as i32 + (error_r >> 3);
+    g = data[(width * 1 + 0) * 3 + 1] as i32 + (error_g >> 3);
+    b = data[(width * 1 + 0) * 3 + 2] as i32 + (error_b >> 3);
+    data[(width * 1 + 0) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 1 + 0) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 1 + 0) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
+    r = data[(width * 1 + 1) * 3 + 0] as i32 + (error_r >> 3);
+    g = data[(width * 1 + 1) * 3 + 1] as i32 + (error_g >> 3);
+    b = data[(width * 1 + 1) * 3 + 2] as i32 + (error_b >> 3);
+    data[(width * 1 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 1 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 1 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
+    r = data[(width * 2 + 0) * 3 + 0] as i32 + (error_r >> 3);
+    g = data[(width * 2 + 0) * 3 + 1] as i32 + (error_g >> 3);
+    b = data[(width * 2 + 0) * 3 + 2] as i32 + (error_b >> 3);
+    data[(width * 2 + 0) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 2 + 0) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 2 + 0) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
 }
 
 fn dither_func_jajuni(data: &mut [u8], width: i32) {
@@ -687,75 +661,75 @@ fn dither_func_jajuni(data: &mut [u8], width: i32) {
     let mut r = data[(width * 0 + 1) * 3 + 0] as i32 + (error_r * 7 / 48);
     let mut g = data[(width * 0 + 1) * 3 + 1] as i32 + (error_g * 7 / 48);
     let mut b = data[(width * 0 + 1) * 3 + 2] as i32 + (error_b * 7 / 48);
-    data[(width * 0 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 0 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 0 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 0 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 0 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 0 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 0 + 2) * 3 + 0] as i32 + (error_r * 5 / 48);
     g = data[(width * 0 + 2) * 3 + 1] as i32 + (error_g * 5 / 48);
     b = data[(width * 0 + 2) * 3 + 2] as i32 + (error_b * 5 / 48);
-    data[(width * 0 + 2) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 0 + 2) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 0 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 0 + 2) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 0 + 2) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 0 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 1 - 2) * 3 + 0] as i32 + (error_r * 3 / 48);
     g = data[(width * 1 - 2) * 3 + 1] as i32 + (error_g * 3 / 48);
     b = data[(width * 1 - 2) * 3 + 2] as i32 + (error_b * 3 / 48);
-    data[(width * 1 - 2) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 1 - 2) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 1 - 2) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 1 - 2) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 1 - 2) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 1 - 2) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 1 - 1) * 3 + 0] as i32 + (error_r * 5 / 48);
     g = data[(width * 1 - 1) * 3 + 1] as i32 + (error_g * 5 / 48);
     b = data[(width * 1 - 1) * 3 + 2] as i32 + (error_b * 5 / 48);
-    data[(width * 1 - 1) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 1 - 1) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 1 - 1) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 1 - 1) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 1 - 1) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 1 - 1) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 1 + 0) * 3 + 0] as i32 + (error_r * 7 / 48);
     g = data[(width * 1 + 0) * 3 + 1] as i32 + (error_g * 7 / 48);
     b = data[(width * 1 + 0) * 3 + 2] as i32 + (error_b * 7 / 48);
-    data[(width * 1 + 0) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 1 + 0) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 1 + 0) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 1 + 0) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 1 + 0) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 1 + 0) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 1 + 1) * 3 + 0] as i32 + (error_r * 5 / 48);
     g = data[(width * 1 + 1) * 3 + 1] as i32 + (error_g * 5 / 48);
     b = data[(width * 1 + 1) * 3 + 2] as i32 + (error_b * 5 / 48);
-    data[(width * 1 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 1 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 1 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 1 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 1 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 1 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 1 + 2) * 3 + 0] as i32 + (error_r * 3 / 48);
     g = data[(width * 1 + 2) * 3 + 1] as i32 + (error_g * 3 / 48);
     b = data[(width * 1 + 2) * 3 + 2] as i32 + (error_b * 3 / 48);
-    data[(width * 1 + 2) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 1 + 2) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 1 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 1 + 2) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 1 + 2) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 1 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 2 - 2) * 3 + 0] as i32 + (error_r * 1 / 48);
     g = data[(width * 2 - 2) * 3 + 1] as i32 + (error_g * 1 / 48);
     b = data[(width * 2 - 2) * 3 + 2] as i32 + (error_b * 1 / 48);
-    data[(width * 2 - 2) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 2 - 2) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 2 - 2) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 2 - 2) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 2 - 2) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 2 - 2) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 2 - 1) * 3 + 0] as i32 + (error_r * 3 / 48);
     g = data[(width * 2 - 1) * 3 + 1] as i32 + (error_g * 3 / 48);
     b = data[(width * 2 - 1) * 3 + 2] as i32 + (error_b * 3 / 48);
-    data[(width * 2 - 1) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 2 - 1) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 2 - 1) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 2 - 1) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 2 - 1) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 2 - 1) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 2 + 0) * 3 + 0] as i32 + (error_r * 5 / 48);
     g = data[(width * 2 + 0) * 3 + 1] as i32 + (error_g * 5 / 48);
     b = data[(width * 2 + 0) * 3 + 2] as i32 + (error_b * 5 / 48);
-    data[(width * 2 + 0) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 2 + 0) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 2 + 0) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 2 + 0) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 2 + 0) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 2 + 0) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 2 + 1) * 3 + 0] as i32 + (error_r * 3 / 48);
     g = data[(width * 2 + 1) * 3 + 1] as i32 + (error_g * 3 / 48);
     b = data[(width * 2 + 1) * 3 + 2] as i32 + (error_b * 3 / 48);
-    data[(width * 2 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 2 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 2 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 2 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 2 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 2 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 2 + 2) * 3 + 0] as i32 + (error_r * 1 / 48);
     g = data[(width * 2 + 2) * 3 + 1] as i32 + (error_g * 1 / 48);
     b = data[(width * 2 + 2) * 3 + 2] as i32 + (error_b * 1 / 48);
-    data[(width * 2 + 2) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 2 + 2) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 2 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 2 + 2) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 2 + 2) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 2 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
 }
 
 fn dither_func_stucki(data: &mut [u8], width: i32) {
@@ -775,75 +749,75 @@ fn dither_func_stucki(data: &mut [u8], width: i32) {
     let mut r = data[(width * 0 + 1) * 3 + 0] as i32 + (error_r * 8 / 48);
     let mut g = data[(width * 0 + 1) * 3 + 1] as i32 + (error_g * 8 / 48);
     let mut b = data[(width * 0 + 1) * 3 + 2] as i32 + (error_b * 8 / 48);
-    data[(width * 0 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 0 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 0 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 0 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 0 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 0 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 0 + 2) * 3 + 0] as i32 + (error_r * 4 / 48);
     g = data[(width * 0 + 2) * 3 + 1] as i32 + (error_g * 4 / 48);
     b = data[(width * 0 + 2) * 3 + 2] as i32 + (error_b * 4 / 48);
-    data[(width * 0 + 2) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 0 + 2) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 0 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 0 + 2) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 0 + 2) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 0 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 1 - 2) * 3 + 0] as i32 + (error_r * 2 / 48);
     g = data[(width * 1 - 2) * 3 + 1] as i32 + (error_g * 2 / 48);
     b = data[(width * 1 - 2) * 3 + 2] as i32 + (error_b * 2 / 48);
-    data[(width * 1 - 2) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 1 - 2) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 1 - 2) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 1 - 2) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 1 - 2) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 1 - 2) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 1 - 1) * 3 + 0] as i32 + (error_r * 4 / 48);
     g = data[(width * 1 - 1) * 3 + 1] as i32 + (error_g * 4 / 48);
     b = data[(width * 1 - 1) * 3 + 2] as i32 + (error_b * 4 / 48);
-    data[(width * 1 - 1) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 1 - 1) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 1 - 1) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 1 - 1) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 1 - 1) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 1 - 1) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 1 + 0) * 3 + 0] as i32 + (error_r * 8 / 48);
     g = data[(width * 1 + 0) * 3 + 1] as i32 + (error_g * 8 / 48);
     b = data[(width * 1 + 0) * 3 + 2] as i32 + (error_b * 8 / 48);
-    data[(width * 1 + 0) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 1 + 0) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 1 + 0) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 1 + 0) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 1 + 0) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 1 + 0) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 1 + 1) * 3 + 0] as i32 + (error_r * 4 / 48);
     g = data[(width * 1 + 1) * 3 + 1] as i32 + (error_g * 4 / 48);
     b = data[(width * 1 + 1) * 3 + 2] as i32 + (error_b * 4 / 48);
-    data[(width * 1 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 1 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 1 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 1 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 1 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 1 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 1 + 2) * 3 + 0] as i32 + (error_r * 2 / 48);
     g = data[(width * 1 + 2) * 3 + 1] as i32 + (error_g * 2 / 48);
     b = data[(width * 1 + 2) * 3 + 2] as i32 + (error_b * 2 / 48);
-    data[(width * 1 + 2) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 1 + 2) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 1 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 1 + 2) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 1 + 2) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 1 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 2 - 2) * 3 + 0] as i32 + (error_r * 1 / 48);
     g = data[(width * 2 - 2) * 3 + 1] as i32 + (error_g * 1 / 48);
     b = data[(width * 2 - 2) * 3 + 2] as i32 + (error_b * 1 / 48);
-    data[(width * 2 - 2) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 2 - 2) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 2 - 2) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 2 - 2) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 2 - 2) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 2 - 2) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 2 - 1) * 3 + 0] as i32 + (error_r * 2 / 48);
     g = data[(width * 2 - 1) * 3 + 1] as i32 + (error_g * 2 / 48);
     b = data[(width * 2 - 1) * 3 + 2] as i32 + (error_b * 2 / 48);
-    data[(width * 2 - 1) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 2 - 1) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 2 - 1) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 2 - 1) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 2 - 1) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 2 - 1) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 2 + 0) * 3 + 0] as i32 + (error_r * 4 / 48);
     g = data[(width * 2 + 0) * 3 + 1] as i32 + (error_g * 4 / 48);
     b = data[(width * 2 + 0) * 3 + 2] as i32 + (error_b * 4 / 48);
-    data[(width * 2 + 0) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 2 + 0) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 2 + 0) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 2 + 0) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 2 + 0) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 2 + 0) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 2 + 1) * 3 + 0] as i32 + (error_r * 2 / 48);
     g = data[(width * 2 + 1) * 3 + 1] as i32 + (error_g * 2 / 48);
     b = data[(width * 2 + 1) * 3 + 2] as i32 + (error_b * 2 / 48);
-    data[(width * 2 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 2 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 2 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 2 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 2 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 2 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 2 + 2) * 3 + 0] as i32 + (error_r * 1 / 48);
     g = data[(width * 2 + 2) * 3 + 1] as i32 + (error_g * 1 / 48);
     b = data[(width * 2 + 2) * 3 + 2] as i32 + (error_b * 1 / 48);
-    data[(width * 2 + 2) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 2 + 2) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 2 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 2 + 2) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 2 + 2) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 2 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
 }
 
 fn dither_func_burkes(data: &mut [u8], width: i32) {
@@ -863,45 +837,45 @@ fn dither_func_burkes(data: &mut [u8], width: i32) {
     let mut r = data[(width * 0 + 1) * 3 + 0] as i32 + (error_r * 4 / 16);
     let mut g = data[(width * 0 + 1) * 3 + 1] as i32 + (error_g * 4 / 16);
     let mut b = data[(width * 0 + 1) * 3 + 2] as i32 + (error_b * 4 / 16);
-    data[(width * 0 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 0 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 0 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 0 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 0 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 0 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 0 + 2) * 3 + 0] as i32 + (error_r * 2 / 16);
     g = data[(width * 0 + 2) * 3 + 1] as i32 + (error_g * 2 / 16);
     b = data[(width * 0 + 2) * 3 + 2] as i32 + (error_b * 2 / 16);
-    data[(width * 0 + 2) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 0 + 2) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 0 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 0 + 2) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 0 + 2) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 0 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 1 - 2) * 3 + 0] as i32 + (error_r * 1 / 16);
     g = data[(width * 1 - 2) * 3 + 1] as i32 + (error_g * 1 / 16);
     b = data[(width * 1 - 2) * 3 + 2] as i32 + (error_b * 1 / 16);
-    data[(width * 1 - 2) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 1 - 2) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 1 - 2) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 1 - 2) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 1 - 2) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 1 - 2) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 1 - 1) * 3 + 0] as i32 + (error_r * 2 / 16);
     g = data[(width * 1 - 1) * 3 + 1] as i32 + (error_g * 2 / 16);
     b = data[(width * 1 - 1) * 3 + 2] as i32 + (error_b * 2 / 16);
-    data[(width * 1 - 1) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 1 - 1) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 1 - 1) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 1 - 1) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 1 - 1) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 1 - 1) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 1 + 0) * 3 + 0] as i32 + (error_r * 4 / 16);
     g = data[(width * 1 + 0) * 3 + 1] as i32 + (error_g * 4 / 16);
     b = data[(width * 1 + 0) * 3 + 2] as i32 + (error_b * 4 / 16);
-    data[(width * 1 + 0) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 1 + 0) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 1 + 0) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 1 + 0) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 1 + 0) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 1 + 0) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 1 + 1) * 3 + 0] as i32 + (error_r * 2 / 16);
     g = data[(width * 1 + 1) * 3 + 1] as i32 + (error_g * 2 / 16);
     b = data[(width * 1 + 1) * 3 + 2] as i32 + (error_b * 2 / 16);
-    data[(width * 1 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 1 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 1 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 1 + 1) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 1 + 1) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 1 + 1) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
     r = data[(width * 1 + 2) * 3 + 0] as i32 + (error_r * 1 / 16);
     g = data[(width * 1 + 2) * 3 + 1] as i32 + (error_g * 1 / 16);
     b = data[(width * 1 + 2) * 3 + 2] as i32 + (error_b * 1 / 16);
-    data[(width * 1 + 2) * 3 + 0] = if r > 0xff { 0xff } else { r  as u8 };
-    data[(width * 1 + 2) * 3 + 1] = if g > 0xff { 0xff } else { g  as u8 };
-    data[(width * 1 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b  as u8 };
+    data[(width * 1 + 2) * 3 + 0] = if r > 0xff { 0xff } else { r as u8 };
+    data[(width * 1 + 2) * 3 + 1] = if g > 0xff { 0xff } else { g as u8 };
+    data[(width * 1 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
 }
 
 fn dither_func_a_dither(data: &mut [u8], width: i32, x: i32, y: i32) {
@@ -1007,7 +981,7 @@ impl<W: Write> sixel_output<W> {
         let mut marks = vec![false; (width * 6) as usize];
         while is_running {
             let mut dst = 0;
-            let mut nextpal:usize = 0;
+            let mut nextpal: usize = 0;
             let mut threshold = 1;
             let mut dirty = false;
             let mut mptr = 0;
@@ -1058,7 +1032,7 @@ impl<W: Write> sixel_output<W> {
                                 dirty = true;
                                 paletted_pixels[dst] = 255;
                             } else {
-                                let pal =nextpal as usize * 3;
+                                let pal = nextpal as usize * 3;
 
                                 rgbhit[pix as usize] = 1;
                                 if output_count > 0 {

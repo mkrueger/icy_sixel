@@ -6,8 +6,8 @@ use output::sixel_output;
 pub mod dither;
 pub mod output;
 pub mod pixelformat;
-pub mod tosixel;
 pub mod quant;
+pub mod tosixel;
 
 /* limitations */
 const SIXEL_OUTPUT_PACKET_SIZE: usize = 16384;
@@ -95,7 +95,7 @@ const SIXEL_FAILED(status)    (((status) & 0x1000) != 0)
 /// method for finding the largest dimension for splitting,
 /// and sorting by that component
 #[derive(Clone, Copy)]
-pub enum FindLargestDim {
+pub enum MethodForLargest {
     /// choose automatically the method for finding the largest dimension
     Auto,
     /// simply comparing the range in RGB space
@@ -106,7 +106,7 @@ pub enum FindLargestDim {
 
 /// method for choosing a color from the box
 #[derive(Clone, Copy)]
-pub enum ColorChoosingMethod {
+pub enum MethodForRep {
     /// choose automatically the method for selecting
     /// representative color from each box
     Auto,
@@ -592,6 +592,9 @@ pub fn sixel_string(
     height: i32,
     pixelformat: PixelFormat,
     method_for_diffuse: DiffusionMethod,
+    method_for_largest: MethodForLargest,
+    method_for_rep: MethodForRep,
+    quality_mode: Quality,
 ) -> SixelResult<String> {
     let mut sixel_data: Vec<u8> = Vec::new();
 
@@ -604,16 +607,21 @@ pub fn sixel_string(
         width,
         height,
         pixelformat,
-        FindLargestDim::Norm,
-        ColorChoosingMethod::Auto,
-        Quality::AUTO,
+        method_for_largest,
+        method_for_rep,
+        quality_mode,
     )?;
     sixel_dither.set_pixelformat(pixelformat);
-    sixel_dither.set_diffusion_type(DiffusionMethod::Stucki);
-  //  sixel_dither.set_diffusion_type(method_for_diffuse);
- 
+    sixel_dither.set_diffusion_type(method_for_diffuse);
+
     let mut bytes = bytes.to_vec();
     sixel_output.encode(&mut bytes, width, height, 0, &mut sixel_dither)?;
 
     Ok(String::from_utf8_lossy(&sixel_data).to_string())
-}
+} /*
+  pub fn main() {
+      let bytes = vec![
+  ];
+
+      println!("{}", sixel_string(&bytes, 128, 128, PixelFormat::RGB888, DiffusionMethod::Stucki, MethodForLargest::Auto, MethodForRep::Auto, Quality::AUTO).unwrap());
+  }*/

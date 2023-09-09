@@ -1,9 +1,10 @@
 use std::vec;
 
 use crate::{
-    pixelformat::sixel_helper_normalize_pixelformat, BuiltinDither, ColorChoosingMethod,
-    DiffusionMethod, FindLargestDim, PixelFormat, Quality, SixelError, SixelResult,
-    SIXEL_PALETTE_MAX, quant::{sixel_quant_make_palette, sixel_quant_apply_palette},
+    pixelformat::sixel_helper_normalize_pixelformat,
+    quant::{sixel_quant_apply_palette, sixel_quant_make_palette},
+    BuiltinDither, DiffusionMethod, MethodForLargest, MethodForRep, PixelFormat, Quality,
+    SixelError, SixelResult, SIXEL_PALETTE_MAX,
 };
 
 pub struct sixel_dither {
@@ -16,13 +17,13 @@ pub struct sixel_dither {
     pub optimize_palette: bool,       /* minimize palette size */
     pub complexion: i32,              /* for complexion correction */
     pub bodyonly: bool,               /* do not output palette section if true */
-    pub method_for_largest: FindLargestDim, /* method for finding the largest dimention
+    pub method_for_largest: MethodForLargest, /* method for finding the largest dimention
                                       for splitting */
-    pub method_for_rep: ColorChoosingMethod, /* method for choosing a color from the box */
+    pub method_for_rep: MethodForRep, /* method for choosing a color from the box */
     pub method_for_diffuse: DiffusionMethod, /* method for diffusing */
-    pub quality_mode: Quality,               /* quality of histogram */
-    pub keycolor: i32,                       /* background color */
-    pub pixelformat: PixelFormat,            /* pixelformat for internal processing */
+    pub quality_mode: Quality,        /* quality of histogram */
+    pub keycolor: i32,                /* background color */
+    pub pixelformat: PixelFormat,     /* pixelformat for internal processing */
 }
 
 const pal_mono_dark: [u8; 6] = [0x00, 0x00, 0x00, 0xff, 0xff, 0xff];
@@ -205,7 +206,6 @@ impl sixel_dither {
             }
             Quality::LOW
         };
-
         Ok(Self {
             palette: vec![0; ncolors as usize * 3],
             cachetable: None,
@@ -217,8 +217,8 @@ impl sixel_dither {
             optimize_palette: false,
             complexion: 1,
             bodyonly: false,
-            method_for_largest: FindLargestDim::Norm,
-            method_for_rep: ColorChoosingMethod::CenterBox,
+            method_for_largest: MethodForLargest::Norm,
+            method_for_rep: MethodForRep::CenterBox,
             method_for_diffuse: DiffusionMethod::FS,
             quality_mode,
             pixelformat: PixelFormat::RGB888,
@@ -247,17 +247,17 @@ impl sixel_dither {
         Ok(result)
     }
 
-    pub fn set_method_for_largest(&mut self, method_for_largest: FindLargestDim) {
-        self.method_for_largest = if matches!(method_for_largest, FindLargestDim::Auto) {
-            FindLargestDim::Norm
+    pub fn set_method_for_largest(&mut self, method_for_largest: MethodForLargest) {
+        self.method_for_largest = if matches!(method_for_largest, MethodForLargest::Auto) {
+            MethodForLargest::Norm
         } else {
             method_for_largest
         };
     }
 
-    pub fn set_method_for_rep(&mut self, method_for_rep: ColorChoosingMethod) {
-        self.method_for_rep = if matches!(method_for_rep, ColorChoosingMethod::Auto) {
-            ColorChoosingMethod::CenterBox
+    pub fn set_method_for_rep(&mut self, method_for_rep: MethodForRep) {
+        self.method_for_rep = if matches!(method_for_rep, MethodForRep::Auto) {
+            MethodForRep::CenterBox
         } else {
             method_for_rep
         };
@@ -281,8 +281,8 @@ impl sixel_dither {
         width: i32,
         height: i32,
         mut pixelformat: PixelFormat,
-        method_for_largest: FindLargestDim,
-        method_for_rep: ColorChoosingMethod,
+        method_for_largest: MethodForLargest,
+        method_for_rep: MethodForRep,
         quality_mode: Quality,
     ) -> SixelResult<()> {
         self.set_pixelformat(pixelformat);
@@ -307,17 +307,17 @@ impl sixel_dither {
         self.set_quality_mode(quality_mode);
 
         let buf = sixel_quant_make_palette(
-                                &input_pixels,
-                                width * height * 3,
-                                PixelFormat::RGB888,
-                                self.reqcolors,
-                                &mut self.ncolors,
-                                &mut self.origcolors,
-                                self.method_for_largest,
-                                self.method_for_rep,
-                                self.quality_mode)?;
+            &input_pixels,
+            width * height * 3,
+            PixelFormat::RGB888,
+            self.reqcolors,
+            &mut self.ncolors,
+            &mut self.origcolors,
+            self.method_for_largest,
+            self.method_for_rep,
+            self.quality_mode,
+        )?;
 
-        println!("set colors:{}", self.ncolors);
         self.palette = buf;
         self.optimized = true;
         if self.origcolors <= self.ncolors {
@@ -430,17 +430,20 @@ impl sixel_dither {
         } else {
             pixels.to_vec()
         };
- 
-        let ncolors = sixel_quant_apply_palette(&mut dest,
-                &mut input_pixels,
-                width, height, 3,
-                &mut self.palette,
-                self.ncolors,
-                self.method_for_diffuse,
-                self.optimized,
-                self.optimize_palette,
-                self.complexion,
-                Some(self.cachetable.as_mut().unwrap()))?;
+        let ncolors = sixel_quant_apply_palette(
+            &mut dest,
+            &mut input_pixels,
+            width,
+            height,
+            3,
+            &mut self.palette,
+            self.ncolors,
+            self.method_for_diffuse,
+            self.optimized,
+            self.optimize_palette,
+            self.complexion,
+            Some(self.cachetable.as_mut().unwrap()),
+        )?;
         self.ncolors = ncolors;
 
         Ok(dest)
