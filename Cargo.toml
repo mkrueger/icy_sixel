@@ -1,0 +1,9 @@
+[package]
+name = "icy_sixel"
+version = "0.1.0"
+edition = "2021"
+authors = ["Mike Krüger <mkrueger@posteo.de>"]
+description = "A 100% rust sixel library."
+homepage = "https://www.github.com/mkrueger/icy_sixel"
+
+[dependencies]
