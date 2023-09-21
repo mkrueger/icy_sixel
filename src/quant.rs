@@ -140,7 +140,7 @@ pub fn largestByNorm(minval: &[i32], maxval: &[i32], depth: i32) -> i32 {
     let mut largestDimension = 0;
     for plane in 0..depth as usize {
         let spread = maxval[plane] - minval[plane];
-        if (spread > largestSpreadSoFar) {
+        if spread > largestSpreadSoFar {
             largestDimension = plane;
             largestSpreadSoFar = spread;
         }
@@ -420,7 +420,7 @@ pub fn mediancut(
     let mut multicolorBoxesExist = colorfreqtable.len() > 1;
 
     /* Main loop: split boxes until we have enough. */
-    while (boxes < newcolors && multicolorBoxesExist) {
+    while boxes < newcolors && multicolorBoxesExist {
         /* Find the first splittable box. */
         let mut bi = 0;
         while bi < boxes && bv[bi as usize].colors < 2 {
@@ -774,7 +774,7 @@ pub fn mask_a(x: i32, y: i32, c: i32) -> f32 {
 }
 
 pub fn mask_x(x: i32, y: i32, c: i32) -> f32 {
-    return ((((x + c * 29) ^ y * 149) * 1234) & 511) as f32 / 256.0 - 1.0;
+    return ((((x + c * 29) ^ (y * 149)) * 1234) & 511) as f32 / 256.0 - 1.0;
 }
 
 use std::{collections::HashMap, hash::Hash};
@@ -1001,14 +1001,14 @@ pub fn sixel_quant_apply_palette(
         for n in depth..(depth + depth) {
             sum2 += palette[n as usize] as i32;
         }
-        if (sum1 == 0 && sum2 == 255 * 3) {
+        if sum1 == 0 && sum2 == 255 * 3 {
             f_lookup = Some(lookup_mono_darkbg);
-        } else if (sum1 == 255 * 3 && sum2 == 0) {
+        } else if sum1 == 255 * 3 && sum2 == 0 {
             f_lookup = Some(lookup_mono_lightbg);
         }
     }
     if f_lookup.is_none() {
-        if (foptimize && depth == 3) {
+        if foptimize && depth == 3 {
             f_lookup = Some(lookup_fast);
         } else {
             f_lookup = Some(lookup_normal);
@@ -1076,7 +1076,7 @@ pub fn sixel_quant_apply_palette(
                         &mut indextable,
                         complexion,
                     ) as usize;
-                    if (migration_map[color_index] == 0) {
+                    if migration_map[color_index] == 0 {
                         result[pos as usize] = ncolors as u8;
                         for n in 0..depth {
                             new_palette[(ncolors * depth + n) as usize] =
@@ -1097,7 +1097,7 @@ pub fn sixel_quant_apply_palette(
             *palette = new_palette;
         }
     } else {
-        if (f_mask) {
+        if f_mask {
             for y in 0..height {
                 for x in 0..width {
                     let mut copy: Vec<u8> = Vec::new();

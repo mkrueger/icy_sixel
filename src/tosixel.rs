@@ -268,7 +268,7 @@ impl<W: Write> sixel_output<W> {
                 } else if g == max {
                     h = 240 + (b - r) * 60 / (max - min);
                 } else if r < g
-                /* if (b == max) */
+                /* if b == max */
                 {
                     h = 360 + (r - g) * 60 / (max - min);
                 } else {
@@ -910,27 +910,27 @@ fn sixel_apply_15bpp_dither(
             dither_func_none(pixels, width);
         }
         DiffusionMethod::Atkinson => {
-            if (x < width - 2 && y < height - 2) {
+            if x < width - 2 && y < height - 2 {
                 dither_func_atkinson(pixels, width);
             }
         }
         DiffusionMethod::FS => {
-            if (x < width - 1 && y < height - 1) {
+            if x < width - 1 && y < height - 1 {
                 dither_func_fs(pixels, width);
             }
         }
         DiffusionMethod::JaJuNi => {
-            if (x < width - 2 && y < height - 2) {
+            if x < width - 2 && y < height - 2 {
                 dither_func_jajuni(pixels, width);
             }
         }
         DiffusionMethod::Stucki => {
-            if (x < width - 2 && y < height - 2) {
+            if x < width - 2 && y < height - 2 {
                 dither_func_stucki(pixels, width);
             }
         }
         DiffusionMethod::Burkes => {
-            if (x < width - 2 && y < height - 1) {
+            if x < width - 2 && y < height - 1 {
                 dither_func_burkes(pixels, width);
             }
         }
@@ -1099,7 +1099,7 @@ impl<W: Write> sixel_output<W> {
                         dither.bodyonly,
                         Some(&palstate),
                     )?;
-                    if (y >= orig_height) {
+                    if y >= orig_height {
                         // end outer loop
                         is_running = false;
                         is_running_inner = false;
