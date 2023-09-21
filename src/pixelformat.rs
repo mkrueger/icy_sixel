@@ -141,9 +141,7 @@ pub fn expand_palette(
         PixelFormat::PAL4 | PixelFormat::G4 => 4,
 
         PixelFormat::PAL8 | PixelFormat::G8 => {
-            for i in 0..(width * height) as usize {
-                dst[i] = src[i];
-            }
+            dst[..((width * height) as usize)].copy_from_slice(&src[..((width * height) as usize)]);
             return Ok(());
         }
 
@@ -223,9 +221,7 @@ pub fn sixel_helper_normalize_pixelformat(
             Ok(PixelFormat::G8)
         }
         PixelFormat::PAL8 => {
-            for i in 0..(width * height) as usize {
-                dst[i] = src[i];
-            }
+            dst[..((width * height) as usize)].copy_from_slice(&src[..((width * height) as usize)]);
             Ok(src_pixelformat)
         }
     }
