@@ -154,7 +154,7 @@ pub fn largestByLuminosity(minval: &[i32], maxval: &[i32], depth: i32) -> i32 {
        BLACKANDWHITE, GRAYSCALE, or RGB (which implies pamP->depth is 1 or 3).
        To save time, we don't actually check it.
     -----------------------------------------------------------------------------*/
-    let mut retval = 0;
+    let retval;
 
     let lumin_factor = [0.2989, 0.5866, 0.1145];
 
@@ -442,7 +442,7 @@ pub fn mediancut(
     }
     *colormapP = colormapFromBv(
         newcolors,
-        &mut bv,
+        &bv,
         boxes,
         colorfreqtable,
         depth,
@@ -493,7 +493,7 @@ pub fn computeHistogram(
     let mut memory = vec![0; 1 << (depth * 5)];
     let mut it = 0;
     let mut refe = 0;
-    let mut refmap = 0;
+    let refmap = 0;
 
     let mut i = 0;
     while i < length {
@@ -827,7 +827,7 @@ pub fn lookup_fast(
 ) -> i32 {
     let mut result: i32 = -1;
     let mut diff = i32::MAX;
-    let mut hash = computeHash(pixel, 0, 3);
+    let hash = computeHash(pixel, 0, 3);
 
     let cache = cachetable[hash as usize];
     if cache != 0 {

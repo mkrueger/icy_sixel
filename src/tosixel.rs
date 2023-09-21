@@ -517,7 +517,7 @@ impl<W: Write> sixel_output<W> {
         height: i32,
         dither: &mut sixel_dither,
     ) -> SixelResult<()> {
-        let mut input_pixels = match dither.pixelformat {
+        let input_pixels = match dither.pixelformat {
             PixelFormat::PAL1
             | PixelFormat::PAL2
             | PixelFormat::PAL4
@@ -891,7 +891,7 @@ fn dither_func_x_dither(data: &mut [u8], width: i32, x: i32, y: i32) {
     for c in 0..3 {
         let mask = ((((x + c * 17) ^ y) * 236) * 1234) & 511;
         let mask = (mask - 128) / 512;
-        let mut value = data[c as usize] as i32 + mask;
+        let value = data[c as usize] as i32 + mask;
         data[c as usize] = value.clamp(0, 255) as u8;
     }
 }
@@ -1006,7 +1006,7 @@ impl<W: Write> sixel_output<W> {
                             height,
                             dither.method_for_diffuse,
                         );
-                        let mut pix = ((pixels[px_idx] & 0xf8) as i32) << 7
+                        let pix = ((pixels[px_idx] & 0xf8) as i32) << 7
                             | ((pixels[px_idx + 1] & 0xf8) as i32) << 2
                             | ((pixels[px_idx + 2] >> 3) & 0x1f) as i32;
 
