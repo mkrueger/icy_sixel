@@ -777,11 +777,11 @@ pub fn mask_x(x: i32, y: i32, c: i32) -> f32 {
     return ((((x + c * 29) ^ (y * 149)) * 1234) & 511) as f32 / 256.0 - 1.0;
 }
 
-use std::{collections::HashMap, hash::Hash};
+use std::collections::HashMap;
 
 use crate::{
     pixelformat::sixel_helper_compute_depth, MethodForLargest, PixelFormat, Quality,
-    ResampleMethod, SixelResult,
+    SixelResult,
 };
 use crate::{DiffusionMethod, MethodForRep, SixelError};
 
