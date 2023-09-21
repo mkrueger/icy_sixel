@@ -586,6 +586,7 @@ enum methodForResampling {
 #endif
 */
 
+#[allow(clippy::too_many_arguments)]
 pub fn sixel_string(
     bytes: &[u8],
     width: i32,

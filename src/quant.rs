@@ -529,6 +529,7 @@ pub fn computeHistogram(
     Ok(colorfreqtable)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn computeColorMapFromInput(
     data: &[u8],
     length: i32,
@@ -902,6 +903,7 @@ pub fn lookup_mono_lightbg(
 }
 
 /* choose colors using median-cut method */
+#[allow(clippy::too_many_arguments)]
 pub fn sixel_quant_make_palette(
     data: &[u8],
     length: i32,
@@ -943,6 +945,7 @@ pub fn sixel_quant_make_palette(
 }
 
 /* apply color palette into specified pixel buffers */
+#[allow(clippy::too_many_arguments)]
 pub fn sixel_quant_apply_palette(
     result: &mut [u8],
     data: &mut [u8],

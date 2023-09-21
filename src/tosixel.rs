@@ -296,6 +296,7 @@ impl<W: Write> sixel_output<W> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn encode_body(
         &mut self,
         pixels: &[u8],
