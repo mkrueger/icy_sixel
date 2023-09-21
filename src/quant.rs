@@ -182,7 +182,7 @@ pub fn centerBox(
     boxSize: i32,
     colorfreqtable: &mut HashMap<i32, Tuple>,
     depth: i32,
-    newTuple: &mut Vec<i32>,
+    newTuple: &mut [i32],
 ) {
     for plane in 0..depth {
         let mut maxval = colorfreqtable.get(&(boxStart)).unwrap().tuple[plane as usize];
@@ -205,7 +205,7 @@ pub fn averageColors(
     boxSize: i32,
     colorfreqtable: &mut HashMap<i32, Tuple>,
     depth: i32,
-    newTuple: &mut Vec<i32>,
+    newTuple: &mut [i32],
 ) {
     for plane in 0..depth {
         let mut sum = 0;
@@ -226,7 +226,7 @@ pub fn averagePixels(
     boxSize: i32,
     colorfreqtable: &mut HashMap<i32, Tuple>,
     depth: i32,
-    newTuple: &mut Vec<i32>,
+    newTuple: &mut [i32],
 ) {
     /* Number of tuples represented by the box */
     /* Count the tuples in question */
@@ -256,7 +256,7 @@ pub fn averagePixels(
 
 fn colormapFromBv(
     newcolors: i32,
-    bv: &Vec<bbox>,
+    bv: &[bbox],
     boxes: i32,
     colorfreqtable: &mut HashMap<i32, Tuple>,
     depth: i32,
@@ -307,7 +307,7 @@ fn colormapFromBv(
 }
 
 fn splitBox(
-    bv: &mut Vec<bbox>,
+    bv: &mut [bbox],
     boxesP: &mut i32,
     bi: usize,
     colorfreqtable: &mut HashMap<i32, Tuple>,
