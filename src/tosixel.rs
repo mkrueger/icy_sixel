@@ -430,8 +430,7 @@ impl<W: Write> sixel_output<W> {
                 self.advance();
             }
             let mut x = 0;
-            while !self.nodes.is_empty() {
-                let mut np = self.nodes.pop().unwrap();
+            while let Some(mut np) = self.nodes.pop() {
 
                 if x > np.sx {
                     /* DECGCR Graphics Carriage Return */
