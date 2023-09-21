@@ -1020,8 +1020,8 @@ impl<W: Write> sixel_output<W> {
                                         threshold = if threshold == 1 { 9 } else { 255 };
                                         nextpal = 0;
                                     }
-                                } else if palstate[nextpal as usize] != 0
-                                    || palhitcount[nextpal as usize] > threshold
+                                } else if palstate[nextpal] != 0
+                                    || palhitcount[nextpal] > threshold
                                 {
                                     nextpal += 1;
                                 } else {
@@ -1033,7 +1033,7 @@ impl<W: Write> sixel_output<W> {
                                 dirty = true;
                                 paletted_pixels[dst] = 255;
                             } else {
-                                let pal = nextpal as usize * 3;
+                                let pal = nextpal * 3;
 
                                 rgbhit[pix as usize] = 1;
                                 if output_count > 0 {

@@ -75,7 +75,7 @@ fn sumcompare(b1: &bbox, b2: &bbox) -> Ordering {
 
 pub fn newColorMap(newcolors: i32, depth: i32) -> HashMap<i32, Tuple> {
     let mut colormap = HashMap::new();
-    for i in 0..newcolors as i32 {
+    for i in 0..newcolors {
         colormap.insert(
             i,
             Tuple {
@@ -120,13 +120,13 @@ pub fn findBoxBoundaries(
 
     for plane in 0..depth {
         minval[plane as usize] =
-            colorfreqtable.get(&(boxStart as i32)).unwrap().tuple[plane as usize];
+            colorfreqtable.get(&(boxStart)).unwrap().tuple[plane as usize];
         maxval[plane as usize] = minval[plane as usize];
     }
     for i in 1..boxSize {
         for plane in 0..depth {
             let v = colorfreqtable
-                .get(&(boxStart as i32 + i as i32))
+                .get(&(boxStart + i))
                 .unwrap()
                 .tuple[plane as usize];
             minval[plane as usize] = minval[plane as usize].min(v);
@@ -185,12 +185,12 @@ pub fn centerBox(
     newTuple: &mut Vec<i32>,
 ) {
     for plane in 0..depth {
-        let mut maxval = colorfreqtable.get(&(boxStart as i32)).unwrap().tuple[plane as usize];
+        let mut maxval = colorfreqtable.get(&(boxStart)).unwrap().tuple[plane as usize];
         let mut minval = maxval;
 
         for i in 1..boxSize {
             let v = colorfreqtable
-                .get(&(boxStart as i32 + i as i32))
+                .get(&(boxStart + i))
                 .unwrap()
                 .tuple[plane as usize];
             minval = minval.min(v);
@@ -212,7 +212,7 @@ pub fn averageColors(
 
         for i in 0..boxSize {
             sum += colorfreqtable
-                .get(&(boxStart as i32 + i as i32))
+                .get(&(boxStart + i))
                 .unwrap()
                 .tuple[plane as usize];
         }
@@ -233,7 +233,7 @@ pub fn averagePixels(
     let mut n = 0; /* initial value */
     for i in 0..boxSize {
         n += colorfreqtable
-            .get(&(boxStart as i32 + i as i32))
+            .get(&(boxStart + i))
             .unwrap()
             .value;
     }
@@ -242,11 +242,11 @@ pub fn averagePixels(
         let mut sum = 0;
         for i in 0..boxSize {
             sum += colorfreqtable
-                .get(&(boxStart as i32 + i as i32))
+                .get(&(boxStart + i))
                 .unwrap()
                 .tuple[plane as usize]
                 * colorfreqtable
-                    .get(&(boxStart as i32 + i as i32))
+                    .get(&(boxStart + i))
                     .unwrap()
                     .value;
         }
@@ -1083,7 +1083,7 @@ pub fn sixel_quant_apply_palette(
                         result[pos as usize] = ncolors as u8;
                         for n in 0..depth {
                             new_palette[(ncolors * depth + n) as usize] =
-                                palette[(color_index * depth as usize + n as usize) as usize];
+                                palette[color_index * depth as usize + n as usize];
                         }
                         ncolors += 1;
                         migration_map[color_index] = ncolors;
