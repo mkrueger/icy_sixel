@@ -957,7 +957,7 @@ pub fn sixel_quant_apply_palette(
     complexion: i32,
     cachetable: Option<&mut Vec<u16>>,
 ) -> SixelResult<i32> {
-    let mut ncolors: i32 = 0;
+    let mut ncolors: i32;
     /* check bad reqcolor */
     if reqcolor < 1 {
         /*
