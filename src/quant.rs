@@ -1049,9 +1049,9 @@ pub fn sixel_quant_apply_palette(
                     let color_index = f_lookup.unwrap()(
                         &copy,
                         depth,
-                        &palette,
+                        palette,
                         reqcolor,
-                        &mut indextable,
+                        indextable,
                         complexion,
                     ) as usize;
                     if migration_map[color_index] == 0 {
@@ -1076,7 +1076,7 @@ pub fn sixel_quant_apply_palette(
                         depth,
                         palette,
                         reqcolor,
-                        &mut indextable,
+                        indextable,
                         complexion,
                     ) as usize;
                     if migration_map[color_index] == 0 {
@@ -1120,7 +1120,7 @@ pub fn sixel_quant_apply_palette(
                         depth,
                         palette,
                         reqcolor,
-                        &mut indextable,
+                        indextable,
                         complexion,
                     ) as u8;
                 }
@@ -1134,7 +1134,7 @@ pub fn sixel_quant_apply_palette(
                         depth,
                         palette,
                         reqcolor,
-                        &mut indextable,
+                        indextable,
                         complexion,
                     ) as usize;
                     result[pos as usize] = color_index as u8;
