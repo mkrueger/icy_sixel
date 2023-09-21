@@ -34,10 +34,10 @@ impl<W: Write> sixel_output<W> {
         let splitsize = SCREEN_PACKET_SIZE - dcs_start.len() - dcs_end.len();
         let mut pos = 0;
         while pos < nwrite {
-            self.fn_write.write(dcs_start.as_bytes());
-            self.fn_write
+            let _ = self.fn_write.write(dcs_start.as_bytes());
+            let _ = self.fn_write
                 .write(self.buffer[pos..pos + splitsize].as_bytes());
-            self.fn_write.write(dcs_end.as_bytes());
+            let _ = self.fn_write.write(dcs_end.as_bytes());
             pos += splitsize;
         }
     }
@@ -47,7 +47,7 @@ impl<W: Write> sixel_output<W> {
             if self.penetrate_multiplexer {
                 self.penetrate(SIXEL_OUTPUT_PACKET_SIZE, DCS_START_7BIT, DCS_END_7BIT);
             } else {
-                self.fn_write
+                let _ = self.fn_write
                     .write(self.buffer[..SIXEL_OUTPUT_PACKET_SIZE].as_bytes());
             }
             self.buffer.drain(0..SIXEL_OUTPUT_PACKET_SIZE);
@@ -502,9 +502,9 @@ impl<W: Write> sixel_output<W> {
         if !self.buffer.is_empty() {
             if self.penetrate_multiplexer {
                 self.penetrate(self.buffer.len(), DCS_START_7BIT, DCS_END_7BIT);
-                self.fn_write.write(b"\x1B\\");
+                let _ = self.fn_write.write(b"\x1B\\");
             } else {
-                self.fn_write.write(self.buffer.as_bytes());
+                let _ = self.fn_write.write(self.buffer.as_bytes());
             }
         }
         Ok(())
@@ -1123,7 +1123,7 @@ impl<W: Write> sixel_output<W> {
             self.encode_header(width, height)?;
         }
 
-        self.encode_body(
+        let _ = self.encode_body(
             &paletted_pixels,
             width,
             height,
@@ -1134,7 +1134,7 @@ impl<W: Write> sixel_output<W> {
             Some(&palstate),
         );
 
-        self.encode_footer();
+        let _ = self.encode_footer();
 
         Ok(())
     }

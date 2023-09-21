@@ -923,7 +923,7 @@ pub fn sixel_quant_make_palette(
 
     let depth = result_depth as usize;
     let mut colormap = HashMap::new();
-    computeColorMapFromInput(
+    let _ = computeColorMapFromInput(
         data,
         length,
         depth as i32,
