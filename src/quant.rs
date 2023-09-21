@@ -119,16 +119,12 @@ pub fn findBoxBoundaries(
     -----------------------------------------------------------------------------*/
 
     for plane in 0..depth {
-        minval[plane as usize] =
-            colorfreqtable.get(&(boxStart)).unwrap().tuple[plane as usize];
+        minval[plane as usize] = colorfreqtable.get(&(boxStart)).unwrap().tuple[plane as usize];
         maxval[plane as usize] = minval[plane as usize];
     }
     for i in 1..boxSize {
         for plane in 0..depth {
-            let v = colorfreqtable
-                .get(&(boxStart + i))
-                .unwrap()
-                .tuple[plane as usize];
+            let v = colorfreqtable.get(&(boxStart + i)).unwrap().tuple[plane as usize];
             minval[plane as usize] = minval[plane as usize].min(v);
             maxval[plane as usize] = maxval[plane as usize].max(v);
         }
@@ -189,10 +185,7 @@ pub fn centerBox(
         let mut minval = maxval;
 
         for i in 1..boxSize {
-            let v = colorfreqtable
-                .get(&(boxStart + i))
-                .unwrap()
-                .tuple[plane as usize];
+            let v = colorfreqtable.get(&(boxStart + i)).unwrap().tuple[plane as usize];
             minval = minval.min(v);
             maxval = maxval.max(v);
         }
@@ -211,10 +204,7 @@ pub fn averageColors(
         let mut sum = 0;
 
         for i in 0..boxSize {
-            sum += colorfreqtable
-                .get(&(boxStart + i))
-                .unwrap()
-                .tuple[plane as usize];
+            sum += colorfreqtable.get(&(boxStart + i)).unwrap().tuple[plane as usize];
         }
 
         newTuple[plane as usize] = sum / boxSize;
@@ -232,23 +222,14 @@ pub fn averagePixels(
     /* Count the tuples in question */
     let mut n = 0; /* initial value */
     for i in 0..boxSize {
-        n += colorfreqtable
-            .get(&(boxStart + i))
-            .unwrap()
-            .value;
+        n += colorfreqtable.get(&(boxStart + i)).unwrap().value;
     }
 
     for plane in 0..depth {
         let mut sum = 0;
         for i in 0..boxSize {
-            sum += colorfreqtable
-                .get(&(boxStart + i))
-                .unwrap()
-                .tuple[plane as usize]
-                * colorfreqtable
-                    .get(&(boxStart + i))
-                    .unwrap()
-                    .value;
+            sum += colorfreqtable.get(&(boxStart + i)).unwrap().tuple[plane as usize]
+                * colorfreqtable.get(&(boxStart + i)).unwrap().value;
         }
         newTuple[plane as usize] = sum / n;
     }
@@ -440,14 +421,7 @@ pub fn mediancut(
             )?;
         }
     }
-    *colormapP = colormapFromBv(
-        newcolors,
-        &bv,
-        boxes,
-        colorfreqtable,
-        depth,
-        methodForRep,
-    );
+    *colormapP = colormapFromBv(newcolors, &bv, boxes, colorfreqtable, depth, methodForRep);
 
     Ok(())
 }
@@ -781,8 +755,7 @@ pub fn mask_x(x: i32, y: i32, c: i32) -> f32 {
 use std::collections::HashMap;
 
 use crate::{
-    pixelformat::sixel_helper_compute_depth, MethodForLargest, PixelFormat, Quality,
-    SixelResult,
+    pixelformat::sixel_helper_compute_depth, MethodForLargest, PixelFormat, Quality, SixelResult,
 };
 use crate::{DiffusionMethod, MethodForRep, SixelError};
 
@@ -844,7 +817,7 @@ pub fn lookup_fast(
                     distant += r * r;
                 }
         #elif 1*/
- /* complexion correction */
+        /* complexion correction */
         let i = i as usize;
         let distant = (pixel[0] as i32 - palette[i * 3 + 0] as i32)
             * (pixel[0] as i32 - palette[i * 3 + 0] as i32)
@@ -1046,14 +1019,9 @@ pub fn sixel_quant_apply_palette(
                         copy.push(val.clamp(0, 255) as u8);
                     }
                     //                   &[u8], i32, &[u8], i32, &mut [u16], i32
-                    let color_index = f_lookup.unwrap()(
-                        &copy,
-                        depth,
-                        palette,
-                        reqcolor,
-                        indextable,
-                        complexion,
-                    ) as usize;
+                    let color_index =
+                        f_lookup.unwrap()(&copy, depth, palette, reqcolor, indextable, complexion)
+                            as usize;
                     if migration_map[color_index] == 0 {
                         result[pos as usize] = ncolors as u8;
                         for n in 0..depth {
@@ -1116,12 +1084,7 @@ pub fn sixel_quant_apply_palette(
                         copy.push(val.clamp(0, 255) as u8);
                     }
                     result[pos as usize] = f_lookup.unwrap()(
-                        &mut copy,
-                        depth,
-                        palette,
-                        reqcolor,
-                        indextable,
-                        complexion,
+                        &mut copy, depth, palette, reqcolor, indextable, complexion,
                     ) as u8;
                 }
             }

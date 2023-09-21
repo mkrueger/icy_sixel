@@ -35,7 +35,8 @@ impl<W: Write> sixel_output<W> {
         let mut pos = 0;
         while pos < nwrite {
             let _ = self.fn_write.write(dcs_start.as_bytes());
-            let _ = self.fn_write
+            let _ = self
+                .fn_write
                 .write(self.buffer[pos..pos + splitsize].as_bytes());
             let _ = self.fn_write.write(dcs_end.as_bytes());
             pos += splitsize;
@@ -47,7 +48,8 @@ impl<W: Write> sixel_output<W> {
             if self.penetrate_multiplexer {
                 self.penetrate(SIXEL_OUTPUT_PACKET_SIZE, DCS_START_7BIT, DCS_END_7BIT);
             } else {
-                let _ = self.fn_write
+                let _ = self
+                    .fn_write
                     .write(self.buffer[..SIXEL_OUTPUT_PACKET_SIZE].as_bytes());
             }
             self.buffer.drain(0..SIXEL_OUTPUT_PACKET_SIZE);
@@ -416,7 +418,7 @@ impl<W: Write> sixel_output<W> {
                         pal: c as i32,
                         sx,
                         mx,
-                        map: map[c * width as usize..].to_vec()
+                        map: map[c * width as usize..].to_vec(),
                     };
 
                     self.nodes.insert(0, np);
@@ -432,7 +434,6 @@ impl<W: Write> sixel_output<W> {
             }
             let mut x = 0;
             while let Some(mut np) = self.nodes.pop() {
-
                 if x > np.sx {
                     /* DECGCR Graphics Carriage Return */
                     self.putc('$');
@@ -1020,8 +1021,7 @@ impl<W: Write> sixel_output<W> {
                                         threshold = if threshold == 1 { 9 } else { 255 };
                                         nextpal = 0;
                                     }
-                                } else if palstate[nextpal] != 0
-                                    || palhitcount[nextpal] > threshold
+                                } else if palstate[nextpal] != 0 || palhitcount[nextpal] > threshold
                                 {
                                     nextpal += 1;
                                 } else {
