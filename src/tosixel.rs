@@ -412,11 +412,12 @@ impl<W: Write> sixel_output<W> {
                         mx = mx + n - 1;
                         mx += 1;
                     }
-                    let mut np = sixel_node::default();
-                    np.pal = c as i32;
-                    np.sx = sx;
-                    np.mx = mx;
-                    np.map = map[c * width as usize..].to_vec();
+                    let np = sixel_node {
+                        pal: c as i32,
+                        sx,
+                        mx,
+                        map: map[c * width as usize..].to_vec()
+                    };
 
                     self.nodes.insert(0, np);
                     sx = mx - 1;
