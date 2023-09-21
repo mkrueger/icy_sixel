@@ -84,7 +84,7 @@ pub fn newColorMap(newcolors: i32, depth: i32) -> HashMap<i32, Tuple> {
             },
         );
     }
-    return colormap;
+    colormap
 }
 
 fn newBoxVector(colors: i32, sum: i32, newcolors: i32) -> Vec<bbox> {
@@ -771,11 +771,11 @@ pub fn diffuse_burkes(
 }
 
 pub fn mask_a(x: i32, y: i32, c: i32) -> f32 {
-    return ((((x + c * 67) + y * 236) * 119) & 255) as f32 / 128.0 - 1.0;
+    ((((x + c * 67) + y * 236) * 119) & 255) as f32 / 128.0 - 1.0
 }
 
 pub fn mask_x(x: i32, y: i32, c: i32) -> f32 {
-    return ((((x + c * 29) ^ (y * 149)) * 1234) & 511) as f32 / 256.0 - 1.0;
+    ((((x + c * 29) ^ (y * 149)) * 1234) & 511) as f32 / 256.0 - 1.0
 }
 
 use std::collections::HashMap;
@@ -814,7 +814,7 @@ pub fn lookup_normal(
         }
     }
 
-    return result;
+    result
 }
 
 /* lookup closest color from palette with "fast" strategy */

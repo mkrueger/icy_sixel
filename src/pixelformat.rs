@@ -187,7 +187,7 @@ pub fn sixel_helper_normalize_pixelformat(
     match src_pixelformat {
         PixelFormat::G8 => {
             expand_rgb(dst, src, width, height, src_pixelformat, 1);
-            return Ok(PixelFormat::RGB888);
+            Ok(PixelFormat::RGB888)
         }
 
         PixelFormat::RGB565
@@ -197,12 +197,12 @@ pub fn sixel_helper_normalize_pixelformat(
         | PixelFormat::GA88
         | PixelFormat::AG88 => {
             expand_rgb(dst, src, width, height, src_pixelformat, 2);
-            return Ok(PixelFormat::RGB888);
+            Ok(PixelFormat::RGB888)
         }
 
         PixelFormat::RGB888 | PixelFormat::BGR888 => {
             expand_rgb(dst, src, width, height, src_pixelformat, 3);
-            return Ok(PixelFormat::RGB888);
+            Ok(PixelFormat::RGB888)
         }
 
         PixelFormat::RGBA8888
@@ -210,23 +210,23 @@ pub fn sixel_helper_normalize_pixelformat(
         | PixelFormat::BGRA8888
         | PixelFormat::ABGR8888 => {
             expand_rgb(dst, src, width, height, src_pixelformat, 4);
-            return Ok(PixelFormat::RGB888);
+            Ok(PixelFormat::RGB888)
         }
 
         PixelFormat::PAL1 | PixelFormat::PAL2 | PixelFormat::PAL4 => {
             expand_palette(dst, src, width, height, src_pixelformat)?;
-            return Ok(PixelFormat::PAL8);
+            Ok(PixelFormat::PAL8)
         }
 
         PixelFormat::G1 | PixelFormat::G2 | PixelFormat::G4 => {
             expand_palette(dst, src, width, height, src_pixelformat)?;
-            return Ok(PixelFormat::G8);
+            Ok(PixelFormat::G8)
         }
         PixelFormat::PAL8 => {
             for i in 0..(width * height) as usize {
                 dst[i] = src[i];
             }
-            return Ok(src_pixelformat);
+            Ok(src_pixelformat)
         }
     }
 }
