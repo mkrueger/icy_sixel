@@ -1019,7 +1019,7 @@ pub fn sixel_quant_apply_palette(
     }
 
     let mut cc = vec![0u16, 1 << (depth * 5)];
-    let mut indextable = match cachetable {
+    let indextable = match cachetable {
         Some(table) => table,
         None => &mut cc,
     };
