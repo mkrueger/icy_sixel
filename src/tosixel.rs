@@ -307,7 +307,7 @@ impl<W: Write> sixel_output<W> {
         bodyonly: bool,
         palstate: Option<&[i32]>,
     ) -> SixelResult<()> {
-        if palette.len() < 1 {
+        if palette.is_empty() {
             return Err(Box::new(SixelError::BadArgument));
         }
         let len = ncolors * width as usize;
@@ -429,7 +429,7 @@ impl<W: Write> sixel_output<W> {
                 self.advance();
             }
             let mut x = 0;
-            while self.nodes.len() > 0 {
+            while !self.nodes.is_empty() {
                 let mut np = self.nodes.pop().unwrap();
 
                 if x > np.sx {
