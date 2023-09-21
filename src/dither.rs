@@ -275,6 +275,7 @@ impl sixel_dither {
         };
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn initialize(
         &mut self,
         data: &[u8],

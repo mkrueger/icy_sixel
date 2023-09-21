@@ -34,10 +34,11 @@ impl<W: Write> sixel_output<W> {
         let splitsize = SCREEN_PACKET_SIZE - dcs_start.len() - dcs_end.len();
         let mut pos = 0;
         while pos < nwrite {
-            self.fn_write.write(dcs_start.as_bytes());
-            self.fn_write
+            let _ = self.fn_write.write(dcs_start.as_bytes());
+            let _ = self
+                .fn_write
                 .write(self.buffer[pos..pos + splitsize].as_bytes());
-            self.fn_write.write(dcs_end.as_bytes());
+            let _ = self.fn_write.write(dcs_end.as_bytes());
             pos += splitsize;
         }
     }
@@ -47,7 +48,8 @@ impl<W: Write> sixel_output<W> {
             if self.penetrate_multiplexer {
                 self.penetrate(SIXEL_OUTPUT_PACKET_SIZE, DCS_START_7BIT, DCS_END_7BIT);
             } else {
-                self.fn_write
+                let _ = self
+                    .fn_write
                     .write(self.buffer[..SIXEL_OUTPUT_PACKET_SIZE].as_bytes());
             }
             self.buffer.drain(0..SIXEL_OUTPUT_PACKET_SIZE);
@@ -268,7 +270,7 @@ impl<W: Write> sixel_output<W> {
                 } else if g == max {
                     h = 240 + (b - r) * 60 / (max - min);
                 } else if r < g
-                /* if (b == max) */
+                /* if b == max */
                 {
                     h = 360 + (r - g) * 60 / (max - min);
                 } else {
@@ -296,6 +298,7 @@ impl<W: Write> sixel_output<W> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn encode_body(
         &mut self,
         pixels: &[u8],
@@ -307,7 +310,7 @@ impl<W: Write> sixel_output<W> {
         bodyonly: bool,
         palstate: Option<&[i32]>,
     ) -> SixelResult<()> {
-        if palette.len() < 1 {
+        if palette.is_empty() {
             return Err(Box::new(SixelError::BadArgument));
         }
         let len = ncolors * width as usize;
@@ -411,11 +414,12 @@ impl<W: Write> sixel_output<W> {
                         mx = mx + n - 1;
                         mx += 1;
                     }
-                    let mut np = sixel_node::default();
-                    np.pal = c as i32;
-                    np.sx = sx;
-                    np.mx = mx;
-                    np.map = map[c * width as usize..].to_vec();
+                    let np = sixel_node {
+                        pal: c as i32,
+                        sx,
+                        mx,
+                        map: map[c * width as usize..].to_vec(),
+                    };
 
                     self.nodes.insert(0, np);
                     sx = mx - 1;
@@ -429,9 +433,7 @@ impl<W: Write> sixel_output<W> {
                 self.advance();
             }
             let mut x = 0;
-            while self.nodes.len() > 0 {
-                let mut np = self.nodes.pop().unwrap();
-
+            while let Some(mut np) = self.nodes.pop() {
                 if x > np.sx {
                     /* DECGCR Graphics Carriage Return */
                     self.putc('$');
@@ -502,9 +504,9 @@ impl<W: Write> sixel_output<W> {
         if !self.buffer.is_empty() {
             if self.penetrate_multiplexer {
                 self.penetrate(self.buffer.len(), DCS_START_7BIT, DCS_END_7BIT);
-                self.fn_write.write(b"\x1B\\");
+                let _ = self.fn_write.write(b"\x1B\\");
             } else {
-                self.fn_write.write(self.buffer.as_bytes());
+                let _ = self.fn_write.write(self.buffer.as_bytes());
             }
         }
         Ok(())
@@ -517,7 +519,7 @@ impl<W: Write> sixel_output<W> {
         height: i32,
         dither: &mut sixel_dither,
     ) -> SixelResult<()> {
-        let mut input_pixels = match dither.pixelformat {
+        let input_pixels = match dither.pixelformat {
             PixelFormat::PAL1
             | PixelFormat::PAL2
             | PixelFormat::PAL4
@@ -560,7 +562,7 @@ impl<W: Write> sixel_output<W> {
     }
 }
 
-fn dither_func_none(data: &mut [u8], width: i32) {}
+fn dither_func_none(_data: &mut [u8], _width: i32) {}
 
 fn dither_func_fs(data: &mut [u8], width: i32) {
     let error_r = data[0] as i32 & 0x7;
@@ -878,7 +880,7 @@ fn dither_func_burkes(data: &mut [u8], width: i32) {
     data[(width * 1 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
 }
 
-fn dither_func_a_dither(data: &mut [u8], width: i32, x: i32, y: i32) {
+fn dither_func_a_dither(data: &mut [u8], _width: i32, x: i32, y: i32) {
     for c in 0..3 {
         let mask = (((x + c * 17) + y * 236) * 119) & 255;
         let mask = (mask - 128) / 256;
@@ -887,11 +889,11 @@ fn dither_func_a_dither(data: &mut [u8], width: i32, x: i32, y: i32) {
     }
 }
 
-fn dither_func_x_dither(data: &mut [u8], width: i32, x: i32, y: i32) {
+fn dither_func_x_dither(data: &mut [u8], _width: i32, x: i32, y: i32) {
     for c in 0..3 {
         let mask = ((((x + c * 17) ^ y) * 236) * 1234) & 511;
         let mask = (mask - 128) / 512;
-        let mut value = data[c as usize] as i32 + mask;
+        let value = data[c as usize] as i32 + mask;
         data[c as usize] = value.clamp(0, 255) as u8;
     }
 }
@@ -910,27 +912,27 @@ fn sixel_apply_15bpp_dither(
             dither_func_none(pixels, width);
         }
         DiffusionMethod::Atkinson => {
-            if (x < width - 2 && y < height - 2) {
+            if x < width - 2 && y < height - 2 {
                 dither_func_atkinson(pixels, width);
             }
         }
         DiffusionMethod::FS => {
-            if (x < width - 1 && y < height - 1) {
+            if x < width - 1 && y < height - 1 {
                 dither_func_fs(pixels, width);
             }
         }
         DiffusionMethod::JaJuNi => {
-            if (x < width - 2 && y < height - 2) {
+            if x < width - 2 && y < height - 2 {
                 dither_func_jajuni(pixels, width);
             }
         }
         DiffusionMethod::Stucki => {
-            if (x < width - 2 && y < height - 2) {
+            if x < width - 2 && y < height - 2 {
                 dither_func_stucki(pixels, width);
             }
         }
         DiffusionMethod::Burkes => {
-            if (x < width - 2 && y < height - 1) {
+            if x < width - 2 && y < height - 1 {
                 dither_func_burkes(pixels, width);
             }
         }
@@ -1006,7 +1008,7 @@ impl<W: Write> sixel_output<W> {
                             height,
                             dither.method_for_diffuse,
                         );
-                        let mut pix = ((pixels[px_idx] & 0xf8) as i32) << 7
+                        let pix = ((pixels[px_idx] & 0xf8) as i32) << 7
                             | ((pixels[px_idx + 1] & 0xf8) as i32) << 2
                             | ((pixels[px_idx + 2] >> 3) & 0x1f) as i32;
 
@@ -1019,8 +1021,7 @@ impl<W: Write> sixel_output<W> {
                                         threshold = if threshold == 1 { 9 } else { 255 };
                                         nextpal = 0;
                                     }
-                                } else if palstate[nextpal as usize] != 0
-                                    || palhitcount[nextpal as usize] > threshold
+                                } else if palstate[nextpal] != 0 || palhitcount[nextpal] > threshold
                                 {
                                     nextpal += 1;
                                 } else {
@@ -1032,7 +1033,7 @@ impl<W: Write> sixel_output<W> {
                                 dirty = true;
                                 paletted_pixels[dst] = 255;
                             } else {
-                                let pal = nextpal as usize * 3;
+                                let pal = nextpal * 3;
 
                                 rgbhit[pix as usize] = 1;
                                 if output_count > 0 {
@@ -1099,7 +1100,7 @@ impl<W: Write> sixel_output<W> {
                         dither.bodyonly,
                         Some(&palstate),
                     )?;
-                    if (y >= orig_height) {
+                    if y >= orig_height {
                         // end outer loop
                         is_running = false;
                         is_running_inner = false;
@@ -1123,7 +1124,7 @@ impl<W: Write> sixel_output<W> {
             self.encode_header(width, height)?;
         }
 
-        self.encode_body(
+        let _ = self.encode_body(
             &paletted_pixels,
             width,
             height,
@@ -1134,7 +1135,7 @@ impl<W: Write> sixel_output<W> {
             Some(&palstate),
         );
 
-        self.encode_footer();
+        let _ = self.encode_footer();
 
         Ok(())
     }
@@ -1144,7 +1145,7 @@ impl<W: Write> sixel_output<W> {
         pixels: &mut [u8],
         width: i32,
         height: i32,
-        depth: i32, /* color depth */
+        _depth: i32, /* color depth */
         dither: &mut sixel_dither,
     ) -> SixelResult<()> /* output context */ {
         if width < 1 {
