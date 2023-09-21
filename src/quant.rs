@@ -792,7 +792,7 @@ pub fn lookup_normal(
     depth: i32,
     palette: &[u8],
     reqcolor: i32,
-    _cachetable: &mut Vec<u16>,
+    _cachetable: &mut [u16],
     complexion: i32,
 ) -> i32 {
     let mut result = -1;
@@ -823,7 +823,7 @@ pub fn lookup_fast(
     _depth: i32,
     palette: &[u8],
     reqcolor: i32,
-    cachetable: &mut Vec<u16>,
+    cachetable: &mut [u16],
     complexion: i32,
 ) -> i32 {
     let mut result: i32 = -1;
@@ -869,7 +869,7 @@ pub fn lookup_mono_darkbg(
     depth: i32,
     _palette: &[u8],
     reqcolor: i32,
-    _cachetable: &mut Vec<u16>,
+    _cachetable: &mut [u16],
     _complexion: i32,
 ) -> i32 {
     let mut distant = 0;
@@ -888,7 +888,7 @@ pub fn lookup_mono_lightbg(
     depth: i32,
     _palette: &[u8],
     reqcolor: i32,
-    _cachetable: &mut Vec<u16>,
+    _cachetable: &mut [u16],
     _complexion: i32,
 ) -> i32 {
     let mut distant = 0;
@@ -958,7 +958,7 @@ pub fn sixel_quant_apply_palette(
     foptimize: bool,
     foptimize_palette: bool,
     complexion: i32,
-    cachetable: Option<&mut Vec<u16>>,
+    cachetable: Option<&mut [u16]>,
 ) -> SixelResult<i32> {
     let mut ncolors: i32;
     /* check bad reqcolor */
@@ -994,7 +994,7 @@ pub fn sixel_quant_apply_palette(
         }
     };
 
-    let mut f_lookup: Option<fn(&[u8], i32, &[u8], i32, &mut Vec<u16>, i32) -> i32> = None;
+    let mut f_lookup: Option<fn(&[u8], i32, &[u8], i32, &mut [u16], i32) -> i32> = None;
     if reqcolor == 2 {
         let mut sum1 = 0;
         let mut sum2 = 0;
@@ -1045,7 +1045,7 @@ pub fn sixel_quant_apply_palette(
                         }
                         copy.push(val.clamp(0, 255) as u8);
                     }
-                    //                   &[u8], i32, &[u8], i32, &mut Vec<u16>, i32
+                    //                   &[u8], i32, &[u8], i32, &mut [u16], i32
                     let color_index = f_lookup.unwrap()(
                         &copy,
                         depth,
