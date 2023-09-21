@@ -347,7 +347,7 @@ fn splitBox(
        first by simply comparing the range in RGB space, and second by
        transforming into luminosities before the comparison.
     */
-    let largestDimension = match methodForLargest {
+    let _largestDimension = match methodForLargest {
         MethodForLargest::Auto | MethodForLargest::Norm => largestByNorm(&minval, &maxval, depth),
         MethodForLargest::Lum => largestByLuminosity(&minval, &maxval, depth),
     };
@@ -493,7 +493,7 @@ pub fn computeHistogram(
     let mut memory = vec![0; 1 << (depth * 5)];
     let mut it = 0;
     let mut refe = 0;
-    let refmap = 0;
+    let _refmap = 0;
 
     let mut i = 0;
     while i < length {
@@ -610,13 +610,13 @@ pub fn error_diffuse(
 }
 
 pub fn diffuse_none(
-    data: &mut [u8],
-    width: i32,
-    height: i32,
-    x: i32,
-    y: i32,
-    depth: i32,
-    error: i32,
+    _data: &mut [u8],
+    _width: i32,
+    _height: i32,
+    _x: i32,
+    _y: i32,
+    _depth: i32,
+    _error: i32,
 ) {
 }
 
@@ -791,7 +791,7 @@ pub fn lookup_normal(
     depth: i32,
     palette: &[u8],
     reqcolor: i32,
-    cachetable: &mut Vec<u16>,
+    _cachetable: &mut Vec<u16>,
     complexion: i32,
 ) -> i32 {
     let mut result = -1;
@@ -819,7 +819,7 @@ pub fn lookup_normal(
 /* lookup closest color from palette with "fast" strategy */
 pub fn lookup_fast(
     pixel: &[u8],
-    depth: i32,
+    _depth: i32,
     palette: &[u8],
     reqcolor: i32,
     cachetable: &mut Vec<u16>,
@@ -866,10 +866,10 @@ pub fn lookup_fast(
 pub fn lookup_mono_darkbg(
     pixel: &[u8],
     depth: i32,
-    palette: &[u8],
+    _palette: &[u8],
     reqcolor: i32,
-    cachetable: &mut Vec<u16>,
-    complexion: i32,
+    _cachetable: &mut Vec<u16>,
+    _complexion: i32,
 ) -> i32 {
     let mut distant = 0;
     for n in 0..depth {
@@ -885,10 +885,10 @@ pub fn lookup_mono_darkbg(
 pub fn lookup_mono_lightbg(
     pixel: &[u8],
     depth: i32,
-    palette: &[u8],
+    _palette: &[u8],
     reqcolor: i32,
-    cachetable: &mut Vec<u16>,
-    complexion: i32,
+    _cachetable: &mut Vec<u16>,
+    _complexion: i32,
 ) -> i32 {
     let mut distant = 0;
     for n in 0..depth {

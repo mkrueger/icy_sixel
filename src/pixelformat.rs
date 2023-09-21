@@ -154,8 +154,8 @@ pub fn expand_palette(
     let mut src_offset = 0;
 
     let max_x = width * bpp / 8;
-    for y in 0..height {
-        for x in 0..max_x {
+    for _y in 0..height {
+        for _x in 0..max_x {
             for i in 0..8 / bpp {
                 let shift = ((8 / bpp) - 1 - i) * (bpp & (1 << (bpp - 1)));
                 dst[dst_offset] = ((src[src_offset] as i32) >> shift) as u8;

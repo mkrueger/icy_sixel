@@ -560,7 +560,7 @@ impl<W: Write> sixel_output<W> {
     }
 }
 
-fn dither_func_none(data: &mut [u8], width: i32) {}
+fn dither_func_none(_data: &mut [u8], _width: i32) {}
 
 fn dither_func_fs(data: &mut [u8], width: i32) {
     let error_r = data[0] as i32 & 0x7;
@@ -878,7 +878,7 @@ fn dither_func_burkes(data: &mut [u8], width: i32) {
     data[(width * 1 + 2) * 3 + 2] = if b > 0xff { 0xff } else { b as u8 };
 }
 
-fn dither_func_a_dither(data: &mut [u8], width: i32, x: i32, y: i32) {
+fn dither_func_a_dither(data: &mut [u8], _width: i32, x: i32, y: i32) {
     for c in 0..3 {
         let mask = (((x + c * 17) + y * 236) * 119) & 255;
         let mask = (mask - 128) / 256;
@@ -887,7 +887,7 @@ fn dither_func_a_dither(data: &mut [u8], width: i32, x: i32, y: i32) {
     }
 }
 
-fn dither_func_x_dither(data: &mut [u8], width: i32, x: i32, y: i32) {
+fn dither_func_x_dither(data: &mut [u8], _width: i32, x: i32, y: i32) {
     for c in 0..3 {
         let mask = ((((x + c * 17) ^ y) * 236) * 1234) & 511;
         let mask = (mask - 128) / 512;
@@ -1144,7 +1144,7 @@ impl<W: Write> sixel_output<W> {
         pixels: &mut [u8],
         width: i32,
         height: i32,
-        depth: i32, /* color depth */
+        _depth: i32, /* color depth */
         dither: &mut sixel_dither,
     ) -> SixelResult<()> /* output context */ {
         if width < 1 {
