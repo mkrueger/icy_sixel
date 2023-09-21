@@ -1,3 +1,12 @@
+#![allow(
+    clippy::identity_op,
+    non_snake_case,
+    non_camel_case_types,
+    non_upper_case_globals,
+    clippy::upper_case_acronyms,
+    dead_code
+)]
+
 use std::error::Error;
 
 use dither::sixel_dither;
