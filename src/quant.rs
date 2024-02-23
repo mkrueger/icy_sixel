@@ -966,8 +966,8 @@ pub fn sixel_quant_apply_palette(
             }
         }
     };
-
-    let mut f_lookup: Option<fn(&[u8], i32, &[u8], i32, &mut [u16], i32) -> i32> = None;
+    type LookupFunc = fn(&[u8], i32, &[u8], i32, &mut [u16], i32) -> i32;
+    let mut f_lookup: Option<LookupFunc> = None;
     if reqcolor == 2 {
         let mut sum1 = 0;
         let mut sum2 = 0;
@@ -1071,7 +1071,7 @@ pub fn sixel_quant_apply_palette(
         if f_mask {
             for y in 0..height {
                 for x in 0..width {
-                    let mut copy: Vec<u8> = Vec::new();
+                    let mut copy = Vec::new();
                     let pos = y * width + x;
                     for d in 0..depth {
                         let mut val = data[(pos * depth + d) as usize] as i32;

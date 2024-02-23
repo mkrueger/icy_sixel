@@ -281,7 +281,7 @@ impl sixel_dither {
         data: &[u8],
         width: i32,
         height: i32,
-        mut pixelformat: PixelFormat,
+        pixelformat: PixelFormat,
         method_for_largest: MethodForLargest,
         method_for_rep: MethodForRep,
         quality_mode: Quality,
@@ -292,13 +292,13 @@ impl sixel_dither {
             _ => {
                 /* normalize pixelformat */
                 let mut normalized_pixels = vec![0; (width * height * 3) as usize];
-                pixelformat = sixel_helper_normalize_pixelformat(
+                self.set_pixelformat(sixel_helper_normalize_pixelformat(
                     &mut normalized_pixels,
                     data,
                     pixelformat,
                     width,
                     height,
-                )?;
+                )?);
                 normalized_pixels
             }
         };

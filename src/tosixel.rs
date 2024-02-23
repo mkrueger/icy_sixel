@@ -463,7 +463,7 @@ impl<W: Write> sixel_output<W> {
                     if fillable {
                         // memset(np.map + np.sx, (1 << i) - 1, (size_t)(np.mx - np.sx));
                         let np = &mut self.nodes[ni as usize];
-                        let v = (1 << ni) - 1;
+                        let v = (1 << i) - 1;
                         np.map.resize(np.mx as usize, v);
                         for j in np.sx..np.mx {
                             np.map[j as usize] = v;
@@ -474,7 +474,6 @@ impl<W: Write> sixel_output<W> {
                 }
 
                 fillable = false;
-                ni += 1;
             }
 
             i = 0;
@@ -993,9 +992,8 @@ impl<W: Write> sixel_output<W> {
             palstate.resize(SIXEL_PALETTE_MAX, 0);
             let mut y = 0;
             let mut mod_y = 0;
-            let mut is_running_inner = true;
 
-            while is_running_inner {
+            loop {
                 for x in 0..width {
                     if marks[mptr] {
                         paletted_pixels[dst] = 255;
@@ -1076,7 +1074,6 @@ impl<W: Write> sixel_output<W> {
                         mod_y = 5;
                     } else {
                         is_running = false;
-                        is_running_inner = false;
                         break;
                     }
                 }
@@ -1103,8 +1100,6 @@ impl<W: Write> sixel_output<W> {
                     if y >= orig_height {
                         // end outer loop
                         is_running = false;
-                        is_running_inner = false;
-
                         break;
                     }
                     px_idx -= (6 * width * 3) as usize;
