@@ -6,6 +6,7 @@
  *****************************************************************************/
 
 use std::cmp::Ordering;
+use std::os::unix::raw::nlink_t;
 use std::vec;
 
 #[derive(Clone)]
@@ -539,13 +540,14 @@ pub fn computeColorMapFromInput(
     *origcolors = colorfreqtable.len() as i32;
 
     if colorfreqtable.len() as i32 <= reqColors {
+        /*
         for i in colorfreqtable.len() as i32..=reqColors {
             let mut tuple: Vec<i32> = vec![0; depth as usize];
             for n in 0..depth {
                 tuple[n as usize] = (i * depth) + n;
             }
             colorfreqtable.insert(i, Tuple { value: i, tuple });
-        }
+        }*/
 
         for i in 0..colorfreqtable.len() as i32 {
             colormapP.insert(i, colorfreqtable.get(&i).unwrap().clone());
@@ -999,9 +1001,8 @@ pub fn sixel_quant_apply_palette(
 
     if foptimize_palette {
         ncolors = 0;
-
-        let mut new_palette = Vec::new();
-        let mut migration_map = Vec::new();
+        let mut new_palette = vec![0; crate::SIXEL_PALETTE_MAX * depth as usize];
+        let mut migration_map = vec![0; crate::SIXEL_PALETTE_MAX];
 
         if f_mask {
             for y in 0..height {
@@ -1025,7 +1026,8 @@ pub fn sixel_quant_apply_palette(
                     if migration_map[color_index] == 0 {
                         result[pos as usize] = ncolors as u8;
                         for n in 0..depth {
-                            new_palette.push(palette[color_index * depth as usize + n as usize]);
+                            new_palette[(ncolors * depth + n) as usize] =
+                                palette[color_index * depth as usize + n as usize];
                         }
                         ncolors += 1;
                         migration_map[color_index] = ncolors;

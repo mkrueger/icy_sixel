@@ -451,12 +451,12 @@ impl<W: Write> sixel_output<W> {
                 }
                 self.put_node(&mut x, np, ncolors as i32, keycolor)?;
 
-                let mut ni: i32 = 0;
-                while ni < self.nodes.len() as i32 {
+                let mut ni = self.nodes.len() as i32 - 1;
+                while ni >= 0 {
                     let onode = &self.nodes[ni as usize];
 
                     if onode.sx < x {
-                        ni += 1;
+                        ni -= 1;
                         continue;
                     }
 
@@ -471,6 +471,7 @@ impl<W: Write> sixel_output<W> {
                     }
                     let np = self.nodes.remove(ni as usize);
                     self.put_node(&mut x, np, ncolors as i32, keycolor)?;
+                    ni -= 1;
                 }
 
                 fillable = false;
@@ -1143,6 +1144,23 @@ impl<W: Write> sixel_output<W> {
         _depth: i32, /* color depth */
         dither: &mut sixel_dither,
     ) -> SixelResult<()> /* output context */ {
+        /*
+            println!("sixel_encode: {} x {} depth {}", width, height, _depth);
+            println!("dither:");
+            println!("\treqcolors: {}", dither.reqcolors);
+            println!("\tncolors: {}", dither.ncolors);
+            println!("\torigcolors: {}", dither.origcolors);
+            println!("\toptimized: {}", dither.optimized);
+            println!("\toptimize_palette: {}", dither.optimize_palette);
+            println!("\tcomplexion: {}", dither.complexion);
+            println!("\tbodyonly: {}", dither.bodyonly);
+            println!("\tmethod_for_largest: {:?}", dither.method_for_largest as i32);
+            println!("\tmethod_for_rep: {:?}", dither.method_for_rep as i32);
+            println!("\tmethod_for_diffuse: {:?}", dither.method_for_diffuse as i32);
+            println!("\tquality_mode: {:?}", dither.quality_mode as i32);
+            println!("\tkeycolor: {:?}", dither.keycolor);
+            println!("\tpixelformat: {:?}", dither.pixelformat as i32);
+        */
         if width < 1 {
             return Err(Box::new(SixelError::BadInput));
             /*

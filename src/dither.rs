@@ -321,7 +321,7 @@ impl sixel_dither {
 
         self.palette = buf;
         self.optimized = true;
-        if self.origcolors <= self.ncolors {
+        if self.origcolors <= self.reqcolors {
             self.method_for_diffuse = DiffusionMethod::None;
         }
         Ok(())

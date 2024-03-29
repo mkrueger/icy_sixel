@@ -130,23 +130,23 @@ pub enum MethodForRep {
 #[derive(Clone, Copy)]
 pub enum DiffusionMethod {
     /// choose diffusion type automatically
-    Auto,
+    Auto = 0,
     /// don't diffuse
-    None,
+    None = 1,
     /// diffuse with Bill Atkinson's method
-    Atkinson,
+    Atkinson = 2,
     /// diffuse with Floyd-Steinberg method
-    FS,
+    FS = 3,
     /// diffuse with Jarvis, Judice & Ninke method
-    JaJuNi,
+    JaJuNi = 4,
     /// diffuse with Stucki's method
-    Stucki,
+    Stucki = 5,
     /// diffuse with Burkes' method
-    Burkes,
+    Burkes = 6,
     /// positionally stable arithmetic dither
-    ADither,
+    ADither = 7,
     /// positionally stable arithmetic xor based dither
-    XDither,
+    XDither = 8,
 }
 
 /// quality modes
@@ -199,28 +199,28 @@ pub enum FormatType {
 
 /// pixelformat type of input image
 /// NOTE: for compatibility, the value of PIXELFORAMT_COLOR_RGB888 must be 3
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum PixelFormat {
-    RGB555,   //   (SIXEL_FORMATTYPE_COLOR     | 0x01) /* 15bpp */
-    RGB565,   //   (SIXEL_FORMATTYPE_COLOR     | 0x02) /* 16bpp */
-    RGB888,   //   (SIXEL_FORMATTYPE_COLOR     | 0x03) /* 24bpp */
-    BGR555,   //   (SIXEL_FORMATTYPE_COLOR     | 0x04) /* 15bpp */
-    BGR565,   //   (SIXEL_FORMATTYPE_COLOR     | 0x05) /* 16bpp */
-    BGR888,   //   (SIXEL_FORMATTYPE_COLOR     | 0x06) /* 24bpp */
-    ARGB8888, // (SIXEL_FORMATTYPE_COLOR     | 0x10) /* 32bpp */
-    RGBA8888, // (SIXEL_FORMATTYPE_COLOR     | 0x11) /* 32bpp */
-    ABGR8888, // (SIXEL_FORMATTYPE_COLOR     | 0x12) /* 32bpp */
-    BGRA8888, // (SIXEL_FORMATTYPE_COLOR     | 0x13) /* 32bpp */
-    G1,       //       (SIXEL_FORMATTYPE_GRAYSCALE | 0x00) /* 1bpp grayscale */
-    G2,       //       (SIXEL_FORMATTYPE_GRAYSCALE | 0x01) /* 2bpp grayscale */
-    G4,       //       (SIXEL_FORMATTYPE_GRAYSCALE | 0x02) /* 4bpp grayscale */
-    G8,       //       (SIXEL_FORMATTYPE_GRAYSCALE | 0x03) /* 8bpp grayscale */
-    AG88,     //     (SIXEL_FORMATTYPE_GRAYSCALE | 0x13) /* 16bpp gray+alpha */
-    GA88,     //     (SIXEL_FORMATTYPE_GRAYSCALE | 0x23) /* 16bpp gray+alpha */
-    PAL1,     //     (SIXEL_FORMATTYPE_PALETTE   | 0x00) /* 1bpp palette */
-    PAL2,     //     (SIXEL_FORMATTYPE_PALETTE   | 0x01) /* 2bpp palette */
-    PAL4,     //     (SIXEL_FORMATTYPE_PALETTE   | 0x02) /* 4bpp palette */
-    PAL8,     //     (SIXEL_FORMATTYPE_PALETTE   | 0x03) /* 8bpp palette */
+    RGB555 = 1,             //   (SIXEL_FORMATTYPE_COLOR     | 0x01) /* 15bpp */
+    RGB565 = 2,             //   (SIXEL_FORMATTYPE_COLOR     | 0x02) /* 16bpp */
+    RGB888 = 3,             //   (SIXEL_FORMATTYPE_COLOR     | 0x03) /* 24bpp */
+    BGR555 = 4,             //   (SIXEL_FORMATTYPE_COLOR     | 0x04) /* 15bpp */
+    BGR565 = 5,             //   (SIXEL_FORMATTYPE_COLOR     | 0x05) /* 16bpp */
+    BGR888 = 6,             //   (SIXEL_FORMATTYPE_COLOR     | 0x06) /* 24bpp */
+    ARGB8888 = 0x10,        // (SIXEL_FORMATTYPE_COLOR     | 0x10) /* 32bpp */
+    RGBA8888 = 0x11,        // (SIXEL_FORMATTYPE_COLOR     | 0x11) /* 32bpp */
+    ABGR8888 = 0x12,        // (SIXEL_FORMATTYPE_COLOR     | 0x12) /* 32bpp */
+    BGRA8888 = 0x13,        // (SIXEL_FORMATTYPE_COLOR     | 0x13) /* 32bpp */
+    G1 = (1 << 6),          //       (SIXEL_FORMATTYPE_GRAYSCALE | 0x00) /* 1bpp grayscale */
+    G2 = (1 << 6) | 0x01,   //       (SIXEL_FORMATTYPE_GRAYSCALE | 0x01) /* 2bpp grayscale */
+    G4 = (1 << 6) | 0x02,   //       (SIXEL_FORMATTYPE_GRAYSCALE | 0x02) /* 4bpp grayscale */
+    G8 = (1 << 6) | 0x03,   //       (SIXEL_FORMATTYPE_GRAYSCALE | 0x03) /* 8bpp grayscale */
+    AG88 = (1 << 6) | 0x13, //     (SIXEL_FORMATTYPE_GRAYSCALE | 0x13) /* 16bpp gray+alpha */
+    GA88 = (1 << 6) | 0x23, //     (SIXEL_FORMATTYPE_GRAYSCALE | 0x23) /* 16bpp gray+alpha */
+    PAL1 = (1 << 7),        //     (SIXEL_FORMATTYPE_PALETTE   | 0x00) /* 1bpp palette */
+    PAL2 = (1 << 7) | 0x01, //     (SIXEL_FORMATTYPE_PALETTE   | 0x01) /* 2bpp palette */
+    PAL4 = (1 << 7) | 0x02, //     (SIXEL_FORMATTYPE_PALETTE   | 0x02) /* 4bpp palette */
+    PAL8 = (1 << 7) | 0x03, //     (SIXEL_FORMATTYPE_PALETTE   | 0x03) /* 8bpp palette */
 }
 
 pub enum PaletteType {
@@ -233,14 +233,14 @@ pub enum PaletteType {
 }
 
 /// policies of SIXEL encoding
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EncodePolicy {
     /// choose encoding policy automatically
-    AUTO,
+    AUTO = 0,
     /// encode as fast as possible
-    FAST,
+    FAST = 1,
     /// encode to as small sixel sequence as possible
-    SIZE,
+    SIZE = 2,
 }
 
 pub enum ResampleMethod {
@@ -611,6 +611,8 @@ pub fn sixel_string(
     let mut sixel_output = sixel_output::new(&mut sixel_data);
     sixel_output.set_encode_policy(EncodePolicy::AUTO);
     let mut sixel_dither = sixel_dither::new(256).unwrap();
+
+    sixel_dither.set_optimize_palette(true);
 
     sixel_dither.initialize(
         bytes,
