@@ -5,8 +5,8 @@ version = "0.1.2"
 edition = "2021"
 authors = ["Mike Krüger <mkrueger@posteo.de>"]
 description = "A 100% rust sixel library."
-homepage = "https://www.github.com/mkrueger/icy_sixel"
-repository = "https://www.github.com/mkrueger/icy_sixel"
+homepage = "https://github.com/mkrueger/icy_sixel"
+repository = "https://github.com/mkrueger/icy_sixel"
 license-file = "LICENSE"
 keywords = ["sixel"]
 
