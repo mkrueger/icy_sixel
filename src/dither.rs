@@ -414,7 +414,7 @@ impl sixel_dither {
             && self.palette != pal_mono_dark
             && self.palette != pal_mono_light
         {
-            self.cachetable = Some(vec![0; 1 << (3 * 5 * 2)]);
+            self.cachetable = Some(vec![0; 1 << (3 * 5)]);
         }
 
         let mut input_pixels = if !matches!(self.pixelformat, PixelFormat::RGB888) {
