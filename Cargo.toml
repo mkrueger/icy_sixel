@@ -11,3 +11,6 @@ license-file = "LICENSE"
 keywords = ["sixel"]
 
 [dependencies]
+
+[dev-dependencies]
+image = { version = "0.25.4", default-features = false, features = ["png"] }
