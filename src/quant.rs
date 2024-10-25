@@ -6,7 +6,6 @@
  *****************************************************************************/
 
 use std::cmp::Ordering;
-use std::os::unix::raw::nlink_t;
 use std::vec;
 
 #[derive(Clone)]

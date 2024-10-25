@@ -1,4 +1,4 @@
-workspace = { members = ["sixel_test"] }
+#workspace = { members = ["sixel_test"] }
 [package]
 name = "icy_sixel"
 version = "0.1.2"
