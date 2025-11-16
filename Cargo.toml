@@ -7,7 +7,7 @@ authors = ["Mike Krüger <mkrueger@posteo.de>"]
 description = "A 100% rust sixel library."
 homepage = "https://github.com/mkrueger/icy_sixel"
 repository = "https://github.com/mkrueger/icy_sixel"
-license-file = "LICENSE"
+license = "MIT OR Apache-2.0"
 keywords = ["sixel"]
 
 [dependencies]
@@ -19,4 +19,8 @@ pretty_assertions = "1.4.1"
 
 [[bench]]
 name = "decoder_benchmark"
+harness = false
+
+[[bench]]
+name = "encoder_benchmark"
 harness = false

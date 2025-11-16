@@ -1,0 +1,96 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Test map8 and snake",
+			"type": "shell",
+			"command": "cargo test test_compare_map8 test_compare_snake -- --nocapture"
+		},
+		{
+			"label": "Test map8",
+			"type": "shell",
+			"command": "cargo test test_compare_map8 -- --nocapture"
+		},
+		{
+			"label": "Test map8 full output",
+			"type": "shell",
+			"command": "cargo test test_compare_map8 -- --nocapture 2>&1"
+		},
+		{
+			"label": "Test baseline_comparison",
+			"type": "shell",
+			"command": "cargo test --test baseline_comparison -- --nocapture"
+		},
+		{
+			"label": "Test map8 PNG comparison",
+			"type": "shell",
+			"command": "cargo test test_map8_vs_png -- --nocapture"
+		},
+		{
+			"label": "Test map8 fromsixel",
+			"type": "shell",
+			"command": "cargo test test_map8_vs_png_fromsixel -- --nocapture --exact"
+		},
+		{
+			"label": "Test map8 fromsixel explicit",
+			"type": "shell",
+			"command": "cargo test --test baseline_comparison test_map8_vs_png_fromsixel -- --nocapture --exact"
+		},
+		{
+			"label": "Test map8 baseline",
+			"type": "shell",
+			"command": "cargo test --test baseline_comparison test_map8_vs_png_baseline -- --nocapture --exact"
+		},
+		{
+			"label": "Test snake PNG comparison",
+			"type": "shell",
+			"command": "cargo test --test baseline_comparison test_snake_vs_png -- --nocapture"
+		},
+		{
+			"label": "Test snake fromsixel",
+			"type": "shell",
+			"command": "cargo test --test baseline_comparison test_snake_vs_png_fromsixel -- --nocapture --exact"
+		},
+		{
+			"label": "Debug baseline crash",
+			"type": "shell",
+			"command": "RUST_BACKTRACE=1 cargo test --test baseline_comparison test_map8_vs_png_baseline -- --nocapture --exact"
+		},
+		{
+			"label": "Test map8 baseline fixed",
+			"type": "shell",
+			"command": "cargo test --test baseline_comparison test_map8_vs_png_baseline -- --nocapture --exact"
+		},
+		{
+			"label": "Full backtrace baseline",
+			"type": "shell",
+			"command": "RUST_BACKTRACE=full cargo test --test baseline_comparison test_map8_vs_png_baseline -- --nocapture --exact 2>&1 | head -100"
+		},
+		{
+			"label": "Run decoder benchmarks",
+			"type": "shell",
+			"command": "cargo bench --bench decoder_benchmark"
+		},
+		{
+			"label": "Run decoder benchmarks",
+			"type": "shell",
+			"command": "cargo bench --bench decoder_benchmark 2>&1",
+			"isBackground": true
+		},
+		{
+			"label": "Run tests after cleanup",
+			"type": "shell",
+			"command": "cargo test"
+		},
+		{
+			"label": "Run all tests",
+			"type": "shell",
+			"command": "cargo test 2>&1 | tail -50"
+		},
+		{
+			"label": "Test summary",
+			"type": "shell",
+			"command": "cargo test 2>&1 | grep -E '(running|test result)'"
+		}
+	]
+}

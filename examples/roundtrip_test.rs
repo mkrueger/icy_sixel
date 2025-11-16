@@ -17,10 +17,10 @@ fn main() {
         width as i32,
         height as i32,
         PixelFormat::RGB888,
-        DiffusionMethod::FS,  // Floyd-Steinberg dithering for smooth gradients
+        DiffusionMethod::FS,
         MethodForLargest::Auto,
         MethodForRep::Auto,
-        Quality::HIGH,  // HIGH often produces better results than FULL
+        Quality::HIGH,
     )
     .expect("Failed to encode");
 
