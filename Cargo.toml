@@ -1,7 +1,7 @@
 #workspace = { members = ["sixel_test"] }
 [package]
 name = "icy_sixel"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2021"
 authors = ["Mike Krüger <mkrueger@posteo.de>"]
 description = "A 100% rust sixel library."
@@ -14,3 +14,9 @@ keywords = ["sixel"]
 
 [dev-dependencies]
 image = { version = "0.25.4", default-features = false, features = ["png"] }
+criterion = { version = "0.7.0", features = ["html_reports"] }
+pretty_assertions = "1.4.1"
+
+[[bench]]
+name = "decoder_benchmark"
+harness = false
