@@ -1,68 +1,105 @@
 # icy_sixel
 
-A high-performance, pure Rust implementation of SIXEL encoder and decoder with SIMD optimizations.
-It started as a port of [libsixel](https://github.com/saitoha/libsixel) by Hayaki Saito (MIT license).
+A high-performance, 100% pure Rust implementation of a SIXEL encoder and decoder.
 
-Wanted a pure rust implementation to make it easier to deploy my cross platform applicaitons :).
+I wanted a pure Rust implementation to simplify deployment of my cross-platform applications.
+In version 0.3.0, I completely rewrote the encoder using [imagequant](https://github.com/ImageOptim/libimagequant)
+(the same library that powers [Gifski](https://gif.ski/)). The results are stunning — far better
+than the old implementation, and it's faster too!
 
-Added a decoder in 0.2.0 & updated encoder code. May still be broken for most options - maybe I'll just take them out. (I still don't care, just need max quality)
+The decoder is a clean-room implementation based on the SIXEL specification, with SIMD optimizations for maximum performance.
 
 ## Features
 
-- **SIXEL Encoder**: Convert images to SIXEL format with color quantization and dithering
-- **SIXEL Decoder**: Clean-room implementation with RGBA output and SIMD acceleration
-- Color quantization (median cut algorithm)
-- Multiple dithering methods (Floyd-Steinberg, Atkinson, Burkes, etc.)
-- Quality modes (AUTO, HIGH, LOW, FULL, HIGHCOLOR)
-- Pure Rust, no C dependencies
+- **SIXEL Encoder**: High-quality color quantization with imagequant and Floyd-Steinberg dithering
+- **SIXEL Decoder**: Clean-room implementation with RGBA output and SSE2 SIMD acceleration
+- **Transparency Support**: Full alpha channel handling in both encoder and decoder
+- **Pure Rust**: No C dependencies, easy to build and deploy
+- **Cross-platform**: Works on Linux, macOS, and Windows
+
+## Installation
+
+Add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+icy_sixel = "0.3"
+```
 
 ## Usage
 
-### Encoding
+### Encoding an Image to SIXEL
 
 ```rust
-use icy_sixel::*;
+use icy_sixel::{sixel_encode, EncodeOptions};
 
-let pixels = vec![255, 0, 0, 0, 255, 0, 0, 0, 255]; // RGB data
-let sixel = sixel_string(
-    &pixels,
-    3, 1,  // width, height
-    PixelFormat::RGB888,
-    DiffusionMethod::FS,
-    MethodForLargest::Auto,
-    MethodForRep::Auto,
-    Quality::HIGH,
-)?;
+// RGBA image data (4 bytes per pixel)
+let rgba = vec![
+    255, 0, 0, 255,   // Red pixel
+    0, 255, 0, 255,   // Green pixel
+    0, 0, 255, 255,   // Blue pixel
+];
+
+let options = EncodeOptions::default();
+let sixel = sixel_encode(&rgba, 3, 1, &options)?;
+print!("{}", sixel);
 ```
 
-### Decoding
+### Encoding with Custom Options
 
 ```rust
-use icy_sixel::*;
+use icy_sixel::{sixel_encode, EncodeOptions};
 
-let sixel_data = b"\x1bPq\"1;1;10;10#0;2;0;0;0#0~~@@~~\x1b\\";
-let (rgba_pixels, width, height) = sixel_decode(sixel_data)?;
-// rgba_pixels: RGBA image data (4 bytes per pixel: R, G, B, A=0xFF)
+let options = EncodeOptions {
+    max_colors: 64,     // Use only 64 colors (2-256)
+    quality: 80,        // Quality 0-100 (higher = better quality but slower)
+};
+
+let sixel = sixel_encode(&rgba, width, height, &options)?;
+```
+
+### Decoding SIXEL to Image Data
+
+```rust
+use icy_sixel::sixel_decode;
+
+let sixel_data = b"\x1bPq#0;2;100;0;0#0~-\x1b\\";
+let (rgba, width, height) = sixel_decode(sixel_data)?;
+// rgba contains RGBA pixel data (4 bytes per pixel)
+```
+
+## CLI Examples
+
+The crate includes command-line examples for encoding and decoding:
+
+```bash
+# Encode a PNG to SIXEL
+cargo run --example encode -- image.png -o output.six
+
+# Encode with custom settings
+cargo run --example encode -- image.png -o output.six --colors 64 --quality 80
+
+# Decode SIXEL to PNG
+cargo run --example decode -- image.six -o output.png
 ```
 
 ## Architecture
 
-The decoder is a clean-room implementation derived from the SIXEL specification (`doc/all-about-sixels.text`):
+### Encoder
+
+The encoder uses [imagequant](https://github.com/ImageOptim/libimagequant) for high-quality
+color quantization with dithering. This produces significantly better results than traditional
+median-cut algorithms, especially for images with gradients or complex color distributions.
+
+### Decoder
+
+The decoder is a clean-room implementation derived from the SIXEL specification:
 
 - Returns RGBA buffers (4 bytes per pixel) for easy integration with graphics libraries
 - SIMD-accelerated horizontal span filling on x86/x86_64 (SSE2)
 - Optimized with color caching and loop unrolling
 - Comprehensive bounds checking prevents buffer overflows
 
-The encoder is based on libsixel v1.8.7+ with encoding and quantization algorithms translated to Rust.
-
 ## License
 
-Licensed under either of:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
-
-at your option.
-
-**Credits**: Encoder based on [libsixel](https://github.com/saitoha/libsixel) by Hayaki Saito (MIT license). Decoder is a clean-room implementation.
+Licensed under the Apache License, Version 2.0 — see [LICENSE](LICENSE) for details.

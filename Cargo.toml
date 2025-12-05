@@ -1,21 +1,23 @@
 #workspace = { members = ["sixel_test"] }
 [package]
 name = "icy_sixel"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["Mike Krüger <mkrueger@posteo.de>"]
-description = "A 100% rust sixel library."
+description = "A 100% rust sixel library. All new & improved."
 homepage = "https://github.com/mkrueger/icy_sixel"
 repository = "https://github.com/mkrueger/icy_sixel"
 license = "MIT OR Apache-2.0"
 keywords = ["sixel"]
 
 [dependencies]
+imagequant = "4.4.1"
 
 [dev-dependencies]
 image = { version = "0.25.4", default-features = false, features = ["png"] }
 criterion = { version = "0.7.0", features = ["html_reports"] }
 pretty_assertions = "1.4.1"
+clap = { version = "4.5", features = ["derive"] }
 
 [[bench]]
 name = "decoder_benchmark"

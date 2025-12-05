@@ -226,19 +226,15 @@ fn test_decode_all_sixel_chars() {
 
 #[test]
 fn test_decode_roundtrip_simple() {
-    // Create a simple image, encode it, decode it, check dimensions
-    let original_pixels = vec![255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 0];
+    // Create a simple RGBA image, encode it, decode it, check dimensions
+    let original_pixels = vec![
+        255, 0, 0, 255, // red
+        0, 255, 0, 255, // green
+        0, 0, 255, 255, // blue
+        255, 255, 0, 255, // yellow
+    ];
 
-    let encoded = sixel_string(
-        &original_pixels,
-        2,
-        2,
-        PixelFormat::RGB888,
-        DiffusionMethod::None,
-        MethodForLargest::Auto,
-        MethodForRep::Auto,
-        Quality::LOW,
-    );
+    let encoded = sixel_encode(&original_pixels, 2, 2, &EncodeOptions::default());
 
     assert!(encoded.is_ok());
     let sixel_str = encoded.unwrap();
@@ -383,4 +379,242 @@ fn test_decode_rgb_output() {
     assert_eq!(width, 2);
     assert_eq!(height, 6);
     assert_eq!(pixels.len(), width * height * 4); // RGBA: 4 bytes per pixel
+}
+
+// ============================================================================
+// Roundtrip tests with real PNG images
+// ============================================================================
+
+/// Helper function to calculate average and max pixel difference
+fn compare_images(original: &[u8], decoded: &[u8], width: usize, height: usize) -> (f64, u8) {
+    let compare_len = (width * height * 4).min(original.len()).min(decoded.len());
+    let mut total_diff: u64 = 0;
+    let mut max_diff: u8 = 0;
+
+    for i in 0..compare_len {
+        // Skip alpha channel comparison (every 4th byte starting at index 3)
+        if i % 4 == 3 {
+            continue;
+        }
+        let diff = (original[i] as i32 - decoded[i] as i32).abs() as u8;
+        total_diff += diff as u64;
+        max_diff = max_diff.max(diff);
+    }
+
+    // Only count RGB channels (3 out of every 4 bytes)
+    let rgb_count = (compare_len / 4) * 3;
+    let avg_diff = if rgb_count > 0 {
+        total_diff as f64 / rgb_count as f64
+    } else {
+        0.0
+    };
+
+    (avg_diff, max_diff)
+}
+
+#[test]
+fn test_roundtrip_test_page_png() {
+    // Load test_page.png
+    let img = image::open("tests/data/test_page.png").expect("Failed to open test_page.png");
+    let rgba_img = img.to_rgba8();
+    let (width, height) = rgba_img.dimensions();
+    let original_pixels = rgba_img.into_raw();
+
+    // Encode to SIXEL
+    let sixel = sixel_encode(
+        &original_pixels,
+        width as usize,
+        height as usize,
+        &EncodeOptions::default(),
+    )
+    .expect("Failed to encode test_page.png");
+
+    assert!(!sixel.is_empty(), "SIXEL output should not be empty");
+    assert!(
+        sixel.starts_with("\x1bPq"),
+        "SIXEL should start with DCS introducer"
+    );
+    assert!(
+        sixel.ends_with("\x1b\\"),
+        "SIXEL should end with string terminator"
+    );
+
+    // Decode back
+    let (decoded_pixels, decoded_width, decoded_height) =
+        sixel_decode(sixel.as_bytes()).expect("Failed to decode test_page.png sixel");
+
+    // Check dimensions (height may be rounded up to multiple of 6)
+    assert_eq!(decoded_width, width as usize, "Width should match");
+    assert!(
+        decoded_height >= height as usize,
+        "Decoded height should be >= original"
+    );
+
+    // Compare quality
+    let (avg_diff, max_diff) = compare_images(
+        &original_pixels,
+        &decoded_pixels,
+        width as usize,
+        height as usize,
+    );
+
+    println!(
+        "test_page.png roundtrip: avg_diff={:.2}, max_diff={}",
+        avg_diff, max_diff
+    );
+
+    // With imagequant, we expect good quality
+    assert!(
+        avg_diff < 15.0,
+        "Average pixel difference should be < 15, got {:.2}",
+        avg_diff
+    );
+}
+
+#[test]
+fn test_roundtrip_transparency_png() {
+    // Load transparency.png
+    let img = image::open("tests/data/transparency.png").expect("Failed to open transparency.png");
+    let rgba_img = img.to_rgba8();
+    let (width, height) = rgba_img.dimensions();
+    let original_pixels = rgba_img.into_raw();
+
+    // Encode to SIXEL
+    let sixel = sixel_encode(
+        &original_pixels,
+        width as usize,
+        height as usize,
+        &EncodeOptions::default(),
+    )
+    .expect("Failed to encode transparency.png");
+
+    assert!(!sixel.is_empty(), "SIXEL output should not be empty");
+    // Note: With transparency, the DCS header includes P2=1 parameter: ESC P 0;1;0 q
+    assert!(
+        sixel.starts_with("\x1bP"),
+        "SIXEL should start with DCS introducer"
+    );
+    assert!(sixel.contains('q'), "SIXEL should contain 'q' command");
+    assert!(
+        sixel.ends_with("\x1b\\"),
+        "SIXEL should end with string terminator"
+    );
+
+    // Decode back
+    let (decoded_pixels, decoded_width, decoded_height) =
+        sixel_decode(sixel.as_bytes()).expect("Failed to decode transparency.png sixel");
+
+    // Check dimensions
+    // SIXEL works in 6-pixel bands, so height may be different
+    // Also, if the bottom rows are all transparent, they may not be encoded
+    assert_eq!(decoded_width, width as usize, "Width should match");
+    // Height can be smaller if trailing rows are transparent, or larger if padded to 6-pixel boundary
+    println!(
+        "transparency.png: original {}x{}, decoded {}x{}",
+        width, height, decoded_width, decoded_height
+    );
+
+    // Compare quality - only compare opaque pixels within the decoded area
+    let mut total_diff: u64 = 0;
+    let mut max_diff: u8 = 0;
+    let mut opaque_pixel_count = 0u64;
+    let mut transparent_match_count = 0u64;
+
+    let compare_height = height.min(decoded_height as u32);
+
+    for y in 0..compare_height {
+        for x in 0..width {
+            let orig_idx = ((y * width + x) * 4) as usize;
+            let dec_idx = ((y * decoded_width as u32 + x) * 4) as usize;
+
+            let orig_alpha = original_pixels[orig_idx + 3];
+            let dec_alpha = decoded_pixels[dec_idx + 3];
+
+            if orig_alpha >= 128 {
+                // Original pixel is opaque, compare RGB
+                opaque_pixel_count += 1;
+                for c in 0..3 {
+                    let diff = (original_pixels[orig_idx + c] as i32
+                        - decoded_pixels[dec_idx + c] as i32)
+                        .abs() as u8;
+                    total_diff += diff as u64;
+                    max_diff = max_diff.max(diff);
+                }
+            } else {
+                // Original pixel is transparent, decoded should also be transparent
+                if dec_alpha < 128 {
+                    transparent_match_count += 1;
+                }
+            }
+        }
+    }
+
+    let avg_diff = if opaque_pixel_count > 0 {
+        total_diff as f64 / (opaque_pixel_count * 3) as f64
+    } else {
+        0.0
+    };
+
+    println!("transparency.png roundtrip: avg_diff={:.2}, max_diff={}, opaque_pixels={}, transparent_matches={}", 
+             avg_diff, max_diff, opaque_pixel_count, transparent_match_count);
+
+    // With imagequant, we expect good quality for opaque pixels
+    assert!(
+        avg_diff < 15.0,
+        "Average pixel difference should be < 15, got {:.2}",
+        avg_diff
+    );
+
+    // Verify that we have some opaque pixels that were compared
+    assert!(
+        opaque_pixel_count > 0,
+        "Should have some opaque pixels to compare"
+    );
+}
+
+#[test]
+fn test_encode_beelitz_heilstaetten_png() {
+    // Load beelitz_heilstätten.png (larger, more complex image)
+    let img = image::open("tests/data/beelitz_heilstätten.png")
+        .expect("Failed to open beelitz_heilstätten.png");
+    let rgba_img = img.to_rgba8();
+    let (width, height) = rgba_img.dimensions();
+    let original_pixels = rgba_img.into_raw();
+
+    println!("beelitz_heilstätten.png: {}x{}", width, height);
+
+    // Encode to SIXEL - this should just work without errors
+    let sixel = sixel_encode(
+        &original_pixels,
+        width as usize,
+        height as usize,
+        &EncodeOptions::default(),
+    )
+    .expect("Failed to encode beelitz_heilstätten.png");
+
+    assert!(!sixel.is_empty(), "SIXEL output should not be empty");
+    assert!(
+        sixel.starts_with("\x1bPq"),
+        "SIXEL should start with DCS introducer"
+    );
+    assert!(
+        sixel.ends_with("\x1b\\"),
+        "SIXEL should end with string terminator"
+    );
+
+    println!(
+        "beelitz_heilstätten.png encoded to {} bytes of SIXEL",
+        sixel.len()
+    );
+
+    // Optionally decode to verify it's valid SIXEL
+    let result = sixel_decode(sixel.as_bytes());
+    assert!(result.is_ok(), "Encoded SIXEL should be decodable");
+
+    let (_, decoded_width, decoded_height) = result.unwrap();
+    assert_eq!(decoded_width, width as usize, "Decoded width should match");
+    assert!(
+        decoded_height >= height as usize,
+        "Decoded height should be >= original"
+    );
 }

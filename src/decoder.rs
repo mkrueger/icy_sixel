@@ -354,6 +354,7 @@ impl<'a> AnsiPayload<'a> {
 #[derive(Clone, Copy)]
 struct DcsSettings {
     aspect_ratio: Option<u16>,
+    #[allow(dead_code)]
     zero_color: Option<u16>,
     grid_size: Option<u16>,
 }
@@ -383,6 +384,8 @@ struct SixelDecoder {
     target_width: usize,
     target_height: usize,
     background_index: usize,
+    /// P2=1 means transparent mode: undrawn pixels remain transparent (alpha=0)
+    transparent_mode: bool,
 }
 
 impl SixelDecoder {
@@ -391,8 +394,19 @@ impl SixelDecoder {
         let background_index = 0usize;
         let repeat = 1usize;
         let current_color = palette.rgb_bytes(0);
+
+        // P2=1 means transparent mode
+        let transparent_mode = settings.zero_color == Some(1);
+
+        // In transparent mode, background has alpha=0; otherwise alpha=255
+        let background = if transparent_mode {
+            [0, 0, 0, 0] // Transparent
+        } else {
+            palette.rgb_bytes(background_index)
+        };
+
         let mut decoder = Self {
-            canvas: Canvas::new(palette.rgb_bytes(background_index)),
+            canvas: Canvas::new(background),
             palette,
             color_index: 0,
             current_color,
@@ -406,6 +420,7 @@ impl SixelDecoder {
             target_width: 0,
             target_height: 0,
             background_index,
+            transparent_mode,
         };
 
         decoder.apply_dcs_settings(settings);
@@ -631,8 +646,12 @@ impl SixelDecoder {
     }
 
     fn background_rgb(&self) -> [u8; 4] {
-        self.palette
-            .rgb_bytes(self.background_index.min(SIXEL_PALETTE_MAX - 1))
+        if self.transparent_mode {
+            [0, 0, 0, 0] // Transparent background
+        } else {
+            self.palette
+                .rgb_bytes(self.background_index.min(SIXEL_PALETTE_MAX - 1))
+        }
     }
 
     fn finalize(mut self) -> SixelResult<(Vec<u8>, usize, usize)> {
@@ -1032,75 +1051,4 @@ unsafe fn fill_rgba_span_sse(buf: &mut [u8], color: [u8; 4]) {
     }
 }
 
-fn fill_rgb_span(buf: &mut [u8], color: [u8; 3]) {
-    if buf.is_empty() {
-        return;
-    }
-
-    #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
-    {
-        if try_fill_rgb_span_simd(buf, color) {
-            return;
-        }
-    }
-
-    fill_rgb_span_scalar(buf, color);
-}
-
-fn fill_rgb_span_scalar(buf: &mut [u8], color: [u8; 3]) {
-    let len = buf.len();
-    if len <= 3 {
-        for (idx, byte) in buf.iter_mut().enumerate() {
-            *byte = color[idx % 3];
-        }
-        return;
-    }
-
-    buf[..3].copy_from_slice(&color);
-    let mut written = 3;
-    while written < len {
-        let copy = (len - written).min(written);
-        let src = buf[..copy].as_ptr();
-        unsafe {
-            std::ptr::copy_nonoverlapping(src, buf[written..].as_mut_ptr(), copy);
-        }
-        written += copy;
-    }
-}
-
-#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
-fn try_fill_rgb_span_simd(buf: &mut [u8], color: [u8; 3]) -> bool {
-    if buf.len() < 48 {
-        return false;
-    }
-
-    #[cfg(target_arch = "x86")]
-    {
-        if !std::is_x86_feature_detected!("sse2") {
-            return false;
-        }
-    }
-
-    unsafe { fill_rgb_span_sse(buf, color) };
-    true
-}
-
-#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
-unsafe fn fill_rgb_span_sse(buf: &mut [u8], color: [u8; 3]) {
-    let mut pattern = [0u8; 16];
-    for idx in 0..16 {
-        pattern[idx] = color[idx % 3];
-    }
-
-    let vec = _mm_loadu_si128(pattern.as_ptr() as *const __m128i);
-    let mut ptr = buf.as_mut_ptr();
-    let end = ptr.add(buf.len());
-    while ptr.add(16) <= end {
-        _mm_storeu_si128(ptr as *mut __m128i, vec);
-        ptr = ptr.add(16);
-    }
-    let remaining = end.offset_from(ptr) as usize;
-    if remaining > 0 {
-        std::ptr::copy_nonoverlapping(pattern.as_ptr(), ptr, remaining);
-    }
-}
+// RGB fill functions removed - decoder now outputs RGBA only
