@@ -102,17 +102,17 @@ The decoder is a clean-room implementation derived from the SIXEL specification:
 
 ## Showcase
 
+Original image for reference:
+
+![Original](crates/icy_sixel/tests/data/beelitz_heilstätten.png)
+
 Quality comparison using a 596×936 pixel photograph (original: 880 KB PNG):
 
 | Settings | SIXEL Size | Decoded Result |
 |----------|------------|----------------|
-| `--quality 100` (default) | 1,346 KB | ![Default quality](tests/data/beelitz_heilstätten_six_decoded.png) |
-| `--quality 1` | 247 KB | ![Low quality](tests/data/beelitz_heilstätten_six_low_decoded.png) |
-| `--quality 1 --colors 2` | 100 KB | ![2 colors](tests/data/beelitz_heilstätten_six_2colors_decoded.png) |
-
-Original image for reference:
-
-![Original](tests/data/beelitz_heilstätten.png)
+| `--quality 100` (default) | 1,346 KB | ![Default quality](crates/icy_sixel/tests/data/beelitz_heilstätten_six_decoded.png) |
+| `--quality 1` | 247 KB | ![Low quality](crates/icy_sixel/tests/data/beelitz_heilstätten_six_low_decoded.png) |
+| `--quality 1 --colors 2` | 100 KB | ![2 colors](crates/icy_sixel/tests/data/beelitz_heilstätten_six_2colors_decoded.png) |
 
 ## License
 
