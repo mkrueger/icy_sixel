@@ -48,11 +48,12 @@ print!("{}", sixel);
 ### Encoding with Custom Options
 
 ```rust
-use icy_sixel::{sixel_encode, EncodeOptions};
+use icy_sixel::{sixel_encode, EncodeOptions, QuantizeMethod};
 
 let options = EncodeOptions {
-    max_colors: 64,     // Use only 64 colors (2-256)
-    quality: 100,       // Quality 0-100 (reserved for future use)
+    max_colors: 64,        // Use only 64 colors (2-256)
+    diffusion: 0.875,      // Floyd-Steinberg dithering strength (0.0-1.0)
+    quantize_method: QuantizeMethod::Wu,  // or QuantizeMethod::kmeans()
 };
 
 let sixel = sixel_encode(&rgba, width, height, &options)?;
@@ -75,19 +76,22 @@ The crate includes a command-line tool for encoding and decoding:
 
 ```bash
 # Install the CLI
-cargo install icy_sixel
+cargo install sixel
 
-# Encode a PNG to SIXEL
-sixel encode image.png -o output.six
+# Encode a PNG to SIXEL (outputs to stdout by default)
+sixel encode image.png
 
 # Encode with custom settings
-sixel encode image.png -o output.six --colors 64
+sixel encode image.png -o output.six --colors 64 --diffusion 0.5 --method kmeans
+
+# Read from stdin
+cat image.png | sixel encode -o output.six
 
 # Decode SIXEL to PNG
 sixel decode image.six -o output.png
 
-# Display image in terminal (requires SIXEL-capable terminal)
-sixel show image.png
+# Decode from stdin
+cat image.six | sixel decode -o output.png
 ```
 
 ## Architecture
@@ -109,17 +113,93 @@ The decoder is a clean-room implementation derived from the SIXEL specification:
 
 ## Showcase
 
-Original image for reference:
+Original image for reference (596×936 pixels, 879 KB PNG):
 
 ![Original](crates/icy_sixel/tests/data/beelitz_heilstätten.png)
 
-Quality comparison using a 596×936 pixel photograph (original: 879 KB PNG):
+### Color Palette Comparison (Wu quantizer, full diffusion)
 
-| Settings | SIXEL Size | Decoded Result |
-|----------|------------|----------------|
-| 256 colors (default) | 1,066 KB | ![Default quality](crates/icy_sixel/tests/data/beelitz_heilstätten_six_decoded.png) |
-| 16 colors | 439 KB | ![Low quality](crates/icy_sixel/tests/data/beelitz_heilstätten_six_low_decoded.png) |
-| 2 colors | 104 KB | ![2 colors](crates/icy_sixel/tests/data/beelitz_heilstätten_six_2colors_decoded.png) |
+| Colors | SIXEL Size | Result |
+|--------|------------|--------|
+| 256 | 1.1 MB | ![256 colors](assets/wu/256colors_diffusion_full.png) |
+| 16 | 440 KB | ![16 colors](assets/wu/16colors_diffusion_full.png) |
+| 2 | 105 KB | ![2 colors](assets/wu/2colors_diffusion_full.png) |
+
+### Dithering Comparison (Wu quantizer, 16 colors)
+
+| Diffusion | SIXEL Size | Result |
+|-----------|------------|--------|
+| Off (0.0) | 420 KB | ![No diffusion](assets/wu/16colors_diffusion_off.png) |
+| Full (0.875) | 440 KB | ![Full diffusion](assets/wu/16colors_diffusion_full.png) |
+
+### Quantizer Comparison (256 colors, full diffusion)
+
+| Method | SIXEL Size | Result |
+|--------|------------|--------|
+| Wu | 1.1 MB | ![Wu](assets/wu/256colors_diffusion_full.png) |
+| K-means | 1.3 MB | ![K-means](assets/kmeans/256colors_diffusion_full.png) |
+
+## Benchmarks
+
+Performance measurements on the test image (596×936 pixels, beelitz_heilstätten.png):
+
+### Encoder Performance
+
+| Benchmark | Time |
+|-----------|------|
+| Default (Wu, 256 colors, full diffusion) | 41.7 ms |
+
+#### Quantizer Comparison
+
+| Quantizer | Time | Notes |
+|-----------|------|-------|
+| Wu | 41.8 ms | Fast, default |
+| K-means | 88.1 ms | 2.1× slower |
+
+#### Color Count Impact
+
+| Colors | Time |
+|--------|------|
+| 256 | 42.0 ms |
+| 16 | 16.3 ms |
+| 2 | 10.8 ms |
+
+#### Diffusion Strength Impact
+
+| Diffusion | Time |
+|-----------|------|
+| Off (0.0) | 21.3 ms |
+| Low (0.3) | 31.7 ms |
+| Medium (0.5) | 34.1 ms |
+| Full (0.875) | 41.9 ms |
+
+### Decoder Performance
+
+| Benchmark | Time |
+|-----------|------|
+| Simple SIXEL | 151 ns |
+| Complex SIXEL | 677 ns |
+| Repeated patterns | 1.46 µs |
+
+#### Scaling with Size
+
+| Bands | Time |
+|-------|------|
+| 10 | 1.3 µs |
+| 50 | 15.9 µs |
+| 100 | 52.6 µs |
+| 200 | 209 µs |
+
+#### Color Palette Size
+
+| Colors | Time |
+|--------|------|
+| 1 | 150 ns |
+| 4 | 485 ns |
+| 16 | 2.0 µs |
+| 64 | 12.4 µs |
+
+*Benchmarks run with `cargo bench` using Criterion on Linux.*
 
 ## License
 

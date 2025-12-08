@@ -2,11 +2,29 @@
 //!
 //! A command-line tool for converting images to/from SIXEL format.
 
-use clap::{Parser, Subcommand};
-use icy_sixel::{sixel_decode, sixel_encode, EncodeOptions};
+use clap::{Parser, Subcommand, ValueEnum};
+use icy_sixel::{sixel_decode, sixel_encode, EncodeOptions, QuantizeMethod};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
+
+/// CLI argument wrapper for QuantizeMethod
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum QuantizeMethodArg {
+    /// Wu's color quantizer (fast and high quality)
+    Wu,
+    /// K-means clustering (slower but may be more accurate)
+    Kmeans,
+}
+
+impl From<QuantizeMethodArg> for QuantizeMethod {
+    fn from(arg: QuantizeMethodArg) -> Self {
+        match arg {
+            QuantizeMethodArg::Wu => QuantizeMethod::Wu,
+            QuantizeMethodArg::Kmeans => QuantizeMethod::kmeans(),
+        }
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "sixel")]
@@ -22,8 +40,8 @@ struct Cli {
 enum Commands {
     /// Encode an image to SIXEL format
     Encode {
-        /// Input image file (PNG, JPEG, GIF, WebP)
-        input: PathBuf,
+        /// Input image file (PNG, JPEG, GIF, WebP), defaults to stdin
+        input: Option<PathBuf>,
 
         /// Output SIXEL file (default: stdout)
         #[arg(short, long)]
@@ -33,33 +51,23 @@ enum Commands {
         #[arg(short, long, default_value = "256")]
         colors: u16,
 
-        /// Quality level (0-100, higher = better quality but larger output)
-        #[arg(short, long, default_value = "100")]
-        quality: u8,
+        /// Floyd-Steinberg error diffusion strength (0.0-1.0, default: 0.875)
+        #[arg(short, long, default_value = "0.875")]
+        diffusion: f32,
+
+        /// Color quantization method
+        #[arg(short = 'm', long, default_value = "wu", value_enum)]
+        method: QuantizeMethodArg,
     },
 
     /// Decode a SIXEL file to PNG
     Decode {
-        /// Input SIXEL file (use - for stdin)
-        input: PathBuf,
+        /// Input SIXEL file, defaults to stdin
+        input: Option<PathBuf>,
 
-        /// Output PNG file (default: input with .png extension)
+        /// Output PNG file (required when reading from stdin)
         #[arg(short, long)]
         output: Option<PathBuf>,
-    },
-
-    /// Display an image as SIXEL in the terminal
-    Show {
-        /// Input image file (PNG, JPEG, GIF, WebP)
-        input: PathBuf,
-
-        /// Maximum number of colors (2-256)
-        #[arg(short, long, default_value = "256")]
-        colors: u16,
-
-        /// Quality level (0-100)
-        #[arg(short, long, default_value = "100")]
-        quality: u8,
     },
 }
 
@@ -71,26 +79,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             input,
             output,
             colors,
-            quality,
+            diffusion,
+            method,
         } => {
-            let img = image::open(&input)
-                .map_err(|e| format!("Failed to open '{}': {}", input.display(), e))?;
+            // Read image data from file or stdin
+            let (img, source_name) = match &input {
+                Some(path) if path.to_string_lossy() != "-" => {
+                    let img = image::open(path)
+                        .map_err(|e| format!("Failed to open '{}': {}", path.display(), e))?;
+                    (img, path.display().to_string())
+                }
+                _ => {
+                    let mut buf = Vec::new();
+                    io::stdin().read_to_end(&mut buf)?;
+                    let img = image::load_from_memory(&buf)
+                        .map_err(|e| format!("Failed to decode image from stdin: {}", e))?;
+                    (img, "stdin".to_string())
+                }
+            };
+
             let rgba_img = img.to_rgba8();
             let (width, height) = rgba_img.dimensions();
             let pixels = rgba_img.into_raw();
 
             eprintln!(
-                "Encoding '{}' ({}x{}) with {} colors, quality={}",
-                input.display(),
+                "Encoding '{}' ({}x{}) with {} colors, diffusion={:.3}, method={:?}",
+                source_name,
                 width,
                 height,
                 colors.clamp(2, 256),
-                quality.clamp(0, 100)
+                diffusion.clamp(0.0, 1.0),
+                method
             );
 
             let opts = EncodeOptions {
                 max_colors: colors.clamp(2, 256),
-                quality: quality.clamp(0, 100),
+                diffusion: diffusion.clamp(0.0, 1.0),
+                quantize_method: method.into(),
             };
 
             let sixel = sixel_encode(&pixels, width as usize, height as usize, &opts)?;
@@ -102,29 +127,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 None => {
                     io::stdout().write_all(sixel.as_bytes())?;
+                    io::stdout().flush()?;
                 }
             }
         }
 
         Commands::Decode { input, output } => {
-            let sixel_data = if input.to_string_lossy() == "-" {
-                let mut buf = Vec::new();
-                io::stdin().read_to_end(&mut buf)?;
-                buf
-            } else {
-                fs::read(&input)
-                    .map_err(|e| format!("Failed to read '{}': {}", input.display(), e))?
+            let (sixel_data, from_stdin) = match &input {
+                Some(path) if path.to_string_lossy() != "-" => {
+                    let data = fs::read(path)
+                        .map_err(|e| format!("Failed to read '{}': {}", path.display(), e))?;
+                    (data, false)
+                }
+                _ => {
+                    let mut buf = Vec::new();
+                    io::stdin().read_to_end(&mut buf)?;
+                    (buf, true)
+                }
             };
 
             eprintln!("Decoding ({} bytes)", sixel_data.len());
 
             let image = sixel_decode(&sixel_data)?;
 
-            let output_path = output.unwrap_or_else(|| {
-                let mut p = input.clone();
-                p.set_extension("png");
-                p
-            });
+            let output_path = match output {
+                Some(path) => path,
+                None => {
+                    if from_stdin {
+                        return Err("Output file (-o) is required when reading from stdin".into());
+                    }
+                    let mut p = input.unwrap();
+                    p.set_extension("png");
+                    p
+                }
+            };
 
             let img =
                 image::RgbaImage::from_raw(image.width as u32, image.height as u32, image.pixels)
@@ -137,26 +173,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 image.height,
                 output_path.display()
             );
-        }
-
-        Commands::Show {
-            input,
-            colors,
-            quality,
-        } => {
-            let img = image::open(&input)
-                .map_err(|e| format!("Failed to open '{}': {}", input.display(), e))?;
-            let rgba_img = img.to_rgba8();
-            let (width, height) = rgba_img.dimensions();
-            let pixels = rgba_img.into_raw();
-
-            let opts = EncodeOptions {
-                max_colors: colors.clamp(2, 256),
-                quality: quality.clamp(0, 100),
-            };
-
-            let sixel = sixel_encode(&pixels, width as usize, height as usize, &opts)?;
-            print!("{}", sixel);
         }
     }
 

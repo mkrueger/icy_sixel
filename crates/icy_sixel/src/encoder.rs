@@ -4,9 +4,10 @@
 //! color palette generation and dithering, then encodes the result to SIXEL format.
 
 use crate::{Result, SixelError};
-use quantette::{
-    deps::palette::Srgb, dither::FloydSteinberg, ImageRef, PaletteSize, Pipeline, QuantizeMethod,
-};
+use quantette::{deps::palette::Srgb, dither::FloydSteinberg, ImageRef, PaletteSize, Pipeline};
+
+// Re-export QuantizeMethod for public API
+pub use quantette::QuantizeMethod;
 
 /// Color type for palette entries (RGB).
 #[derive(Clone, Copy, Debug)]
@@ -23,16 +24,34 @@ pub struct EncodeOptions {
     /// Fewer colors = smaller SIXEL output but less accurate colors.
     pub max_colors: u16,
 
-    /// Quality setting (0-100). Currently unused but reserved for future use.
-    /// quantette uses Wu's algorithm which provides consistent high quality.
-    pub quality: u8,
+    /// Floyd-Steinberg error diffusion strength (0.0-1.0).
+    ///
+    /// Controls how much quantization error is spread to neighboring pixels:
+    /// - **0.875**: Default (7/8), best for photographs with smooth gradients
+    /// - **0.5**: Reduced dithering, less noise, good for graphics
+    /// - **0.0**: No dithering, sharp edges but may show color banding
+    ///
+    /// Higher values produce smoother gradients but may introduce noise.
+    /// Lower values preserve sharp edges but may show color banding.
+    /// Values are clamped to the range 0.0-1.0.
+    pub diffusion: f32,
+
+    /// Color quantization method.
+    ///
+    /// Available methods:
+    /// - [`QuantizeMethod::Wu`]: Wu's color quantizer (default, fast and high quality)
+    /// - [`QuantizeMethod::Kmeans`]: K-means clustering (slower but may be more accurate)
+    ///
+    /// For most use cases, Wu's method provides excellent results.
+    pub quantize_method: QuantizeMethod,
 }
 
 impl Default for EncodeOptions {
     fn default() -> Self {
         Self {
             max_colors: 256,
-            quality: 100,
+            diffusion: FloydSteinberg::DEFAULT_ERROR_DIFFUSION,
+            quantize_method: QuantizeMethod::Wu,
         }
     }
 }
@@ -95,13 +114,28 @@ pub fn sixel_encode(
     let image = ImageRef::new(width as u32, height as u32, &rgb_pixels)
         .map_err(|e| SixelError::Quantization(e.to_string()))?;
 
-    // Use Wu's quantization method for better quality with dithering
-    let indexed_image = Pipeline::new()
+    // Use configured quantization method with diffusion-based dithering
+    let diffusion = opts.diffusion.clamp(0.0, 1.0);
+    let pipeline = Pipeline::new()
         .palette_size(palette_size)
-        .quantize_method(QuantizeMethod::Wu)
-        .ditherer(FloydSteinberg::new())
-        .input_image(image)
-        .output_srgb8_indexed_image();
+        .quantize_method(opts.quantize_method.clone());
+
+    // Apply dithering based on diffusion setting
+    let indexed_image = if diffusion <= 0.0 {
+        // No dithering - sharp edges, may show banding
+        pipeline
+            .ditherer(None)
+            .input_image(image)
+            .output_srgb8_indexed_image()
+    } else {
+        // Use Floyd-Steinberg dithering with specified diffusion strength
+        let ditherer =
+            FloydSteinberg::with_error_diffusion(diffusion).unwrap_or_else(FloydSteinberg::new);
+        pipeline
+            .ditherer(ditherer)
+            .input_image(image)
+            .output_srgb8_indexed_image()
+    };
 
     // Extract palette and indices
     let palette: Vec<Rgb> = indexed_image

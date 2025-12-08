@@ -37,7 +37,7 @@ pub mod decoder;
 pub mod encoder;
 
 pub use decoder::{sixel_decode, PixelAspectRatio, SixelImage};
-pub use encoder::{sixel_encode, sixel_encode_default, EncodeOptions};
+pub use encoder::{sixel_encode, sixel_encode_default, EncodeOptions, QuantizeMethod};
 
 /// Errors that can occur during SIXEL encoding or decoding.
 #[derive(Debug, Error)]
