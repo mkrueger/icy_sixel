@@ -1,6 +1,6 @@
 [package]
 name = "icy_sixel"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 authors = ["Mike Krüger <mkrueger@posteo.de>"]
 description = "A 100% Rust SIXEL encoder and decoder library with high-quality color quantization"
@@ -12,11 +12,12 @@ categories = ["encoding", "graphics", "multimedia::images"]
 readme = "../../README.md"
 
 [dependencies]
-imagequant = "4.4.1"
+quantette = "0.5.1"
+thiserror = "2.0"
 
 [dev-dependencies]
-image = { version = "0.25.4", default-features = false, features = ["png"] }
-criterion = { version = "0.7.0", features = ["html_reports"] }
+image = { version = "0.25.9", default-features = false, features = ["png"] }
+criterion = { version = "0.8.1", features = ["html_reports"] }
 pretty_assertions = "1.4.1"
 
 [[bench]]

@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use icy_sixel::{sixel_decode, sixel_decode_from_dcs};
+use icy_sixel::sixel_decode;
 use std::fs;
 use std::hint::black_box;
 
@@ -46,24 +46,6 @@ fn bench_repeated_decode(c: &mut Criterion) {
     c.bench_function("decode_repeated_sixel", |b| {
         b.iter(|| {
             let result = sixel_decode(black_box(REPEATED_SIXEL));
-            assert!(result.is_ok());
-            result
-        })
-    });
-}
-
-fn bench_from_dcs(c: &mut Criterion) {
-    // Raw sixel data without DCS header
-    let raw_data = b"#0;2;100;0;0#0~~~\x1b\\";
-
-    c.bench_function("decode_from_dcs", |b| {
-        b.iter(|| {
-            let result = sixel_decode_from_dcs(
-                black_box(Some(1)),
-                black_box(None),
-                black_box(None),
-                black_box(raw_data),
-            );
             assert!(result.is_ok());
             result
         })
@@ -174,7 +156,6 @@ criterion_group!(
     bench_simple_decode,
     bench_complex_decode,
     bench_repeated_decode,
-    bench_from_dcs,
     bench_real_files,
     bench_varying_sizes,
     bench_color_changes

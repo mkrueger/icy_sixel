@@ -118,7 +118,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             eprintln!("Decoding ({} bytes)", sixel_data.len());
 
-            let (rgba, width, height) = sixel_decode(&sixel_data)?;
+            let image = sixel_decode(&sixel_data)?;
 
             let output_path = output.unwrap_or_else(|| {
                 let mut p = input.clone();
@@ -126,14 +126,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 p
             });
 
-            let img = image::RgbaImage::from_raw(width as u32, height as u32, rgba)
-                .ok_or("Failed to create image from decoded data")?;
+            let img =
+                image::RgbaImage::from_raw(image.width as u32, image.height as u32, image.pixels)
+                    .ok_or("Failed to create image from decoded data")?;
             img.save(&output_path)?;
 
             eprintln!(
                 "Decoded: {}x{} pixels -> '{}'",
-                width,
-                height,
+                image.width,
+                image.height,
                 output_path.display()
             );
         }

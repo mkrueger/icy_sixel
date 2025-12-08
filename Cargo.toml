@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/icy_sixel", "crates/icy_sixel-cli"]
+exclude = ["crates/icy_sixel/fuzz"]
 resolver = "2"
 
 [workspace.package]

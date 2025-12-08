@@ -2,8 +2,16 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use icy_sixel::{sixel_encode, EncodeOptions};
 use std::hint::black_box;
 
-fn load_snake_png() -> (Vec<u8>, usize, usize) {
-    let img = image::open("tests/data/snake.png").expect("Failed to load snake.png");
+fn load_test_page_png() -> (Vec<u8>, usize, usize) {
+    let img = image::open("tests/data/test_page.png").expect("Failed to load test_page.png");
+    let rgba_img = img.to_rgba8();
+    let (width, height) = rgba_img.dimensions();
+    (rgba_img.into_raw(), width as usize, height as usize)
+}
+
+fn load_beelitz_png() -> (Vec<u8>, usize, usize) {
+    let img = image::open("tests/data/beelitz_heilstätten.png")
+        .expect("Failed to load beelitz_heilstätten.png");
     let rgba_img = img.to_rgba8();
     let (width, height) = rgba_img.dimensions();
     (rgba_img.into_raw(), width as usize, height as usize)
@@ -25,12 +33,12 @@ fn generate_gradient_rgba(width: usize, height: usize) -> Vec<u8> {
     pixels
 }
 
-fn bench_encode_snake(c: &mut Criterion) {
-    let (rgba, width, height) = load_snake_png();
+fn bench_encode_test_page(c: &mut Criterion) {
+    let (rgba, width, height) = load_test_page_png();
 
     let opts = EncodeOptions::default();
 
-    c.bench_function("encode_snake_600x450", |b| {
+    c.bench_function(&format!("encode_test_page_{}x{}", width, height), |b| {
         b.iter(|| {
             let result = sixel_encode(black_box(&rgba), width, height, &opts);
             assert!(result.is_ok());
@@ -39,15 +47,29 @@ fn bench_encode_snake(c: &mut Criterion) {
     });
 }
 
-fn bench_encode_snake_fast(c: &mut Criterion) {
-    let (rgba, width, height) = load_snake_png();
+fn bench_encode_beelitz(c: &mut Criterion) {
+    let (rgba, width, height) = load_beelitz_png();
+
+    let opts = EncodeOptions::default();
+
+    c.bench_function(&format!("encode_beelitz_{}x{}", width, height), |b| {
+        b.iter(|| {
+            let result = sixel_encode(black_box(&rgba), width, height, &opts);
+            assert!(result.is_ok());
+            result
+        })
+    });
+}
+
+fn bench_encode_beelitz_fast(c: &mut Criterion) {
+    let (rgba, width, height) = load_beelitz_png();
 
     let opts = EncodeOptions {
         max_colors: 256,
         quality: 50, // Lower quality = faster encoding
     };
 
-    c.bench_function("encode_snake_600x450_fast", |b| {
+    c.bench_function(&format!("encode_beelitz_{}x{}_fast", width, height), |b| {
         b.iter(|| {
             let result = sixel_encode(black_box(&rgba), width, height, &opts);
             assert!(result.is_ok());
@@ -84,8 +106,9 @@ fn bench_encode_medium(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    bench_encode_snake,
-    bench_encode_snake_fast,
+    bench_encode_test_page,
+    bench_encode_beelitz,
+    bench_encode_beelitz_fast,
     bench_encode_small,
     bench_encode_medium,
 );

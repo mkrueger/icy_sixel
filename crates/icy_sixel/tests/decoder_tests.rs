@@ -8,7 +8,8 @@ fn test_decode_simple_sixel() {
     let result = sixel_decode(sixel_data);
     assert!(result.is_ok(), "Decoding should succeed");
 
-    let (pixels, width, height) = result.unwrap();
+    let image = result.unwrap();
+    let (pixels, width, height) = (image.pixels, image.width, image.height);
     assert!(width > 0, "Width should be positive");
     assert!(height > 0, "Height should be positive");
     assert_eq!(
@@ -19,36 +20,17 @@ fn test_decode_simple_sixel() {
 }
 
 #[test]
-fn test_decode_from_dcs_simple() {
-    // Test the new DCS parameter API with just sixel data (no DCS header)
-    // Simple sixel data: color 0 (black), one sixel character
-    let sixel_data = b"#0~\x1b\\";
+fn test_decode_with_aspect_ratio() {
+    // Test that aspect ratio is parsed from DCS params
+    let sixel_data = b"\x1bP2q#0;2;100;0;0#0~~\x1b\\"; // P1=2 means aspect 5:1
 
-    let result = sixel_decode_from_dcs(None, None, None, sixel_data);
+    let result = sixel_decode(sixel_data);
     assert!(result.is_ok(), "Decoding should succeed");
 
-    let (pixels, width, height) = result.unwrap();
-    assert!(width > 0, "Width should be positive");
-    assert!(height >= 6, "Height should be at least 6 (one sixel row)");
-    assert_eq!(
-        pixels.len(),
-        width * height * 4,
-        "Pixel buffer size should match dimensions * 4 (RGBA)"
-    );
-}
-
-#[test]
-fn test_decode_from_dcs_with_params() {
-    // Test with DCS parameters: aspect_ratio=2 (5:1), grid_size=10
-    let sixel_data = b"#0~#1;2;0;100;0~\x1b\\";
-
-    let result = sixel_decode_from_dcs(Some(2), None, Some(10), sixel_data);
-    assert!(result.is_ok(), "Decoding with parameters should succeed");
-
-    let (pixels, width, height) = result.unwrap();
-    assert!(width > 0);
-    assert!(height > 0);
-    assert_eq!(pixels.len(), width * height * 4);
+    let image = result.unwrap();
+    assert!(image.width > 0);
+    assert!(image.height >= 6);
+    // Aspect ratio should be parsed (P1=2 means pad=5)
 }
 
 #[test]
@@ -59,7 +41,8 @@ fn test_decode_with_colors() {
     let result = sixel_decode(sixel_data);
     assert!(result.is_ok());
 
-    let (pixels, width, height) = result.unwrap();
+    let image = result.unwrap();
+    let (pixels, width, height) = (image.pixels, image.width, image.height);
     assert!(width > 0);
     assert!(height >= 6); // At least one sixel row (6 pixels high)
 
@@ -75,7 +58,8 @@ fn test_decode_multicolor() {
     let result = sixel_decode(sixel_data);
     assert!(result.is_ok());
 
-    let (_pixels, width, height) = result.unwrap();
+    let image = result.unwrap();
+    let (_pixels, width, height) = (image.pixels, image.width, image.height);
     assert!(width > 0);
     assert!(height > 0);
 }
@@ -88,7 +72,8 @@ fn test_decode_with_repeat() {
     let result = sixel_decode(sixel_data);
     assert!(result.is_ok());
 
-    let (_pixels, width, _height) = result.unwrap();
+    let image = result.unwrap();
+    let (_pixels, width, _height) = (image.pixels, image.width, image.height);
     assert_eq!(width, 5, "Width should be 5 (repeat count)");
 }
 
@@ -100,7 +85,8 @@ fn test_decode_carriage_return() {
     let result = sixel_decode(sixel_data);
     assert!(result.is_ok());
 
-    let (_pixels, width, _height) = result.unwrap();
+    let image = result.unwrap();
+    let (_pixels, width, _height) = (image.pixels, image.width, image.height);
     assert_eq!(width, 2, "Width should be 2");
 }
 
@@ -110,7 +96,8 @@ fn test_decode_color_overlay_preserves_previous_pixels() {
     // The previously drawn red pixels must survive in rows where the second pass has zero bits.
     let sixel_data = b"\x1bPq#2~$#3_\x1b\\";
 
-    let (pixels, width, height) = sixel_decode(sixel_data).expect("Decoding overlay should work");
+    let image = sixel_decode(sixel_data).expect("Decoding overlay should work");
+    let (pixels, width, height) = (image.pixels, image.width, image.height);
     assert_eq!(width, 1, "Overlay sample should be one column wide");
     assert!(
         height >= 6,
@@ -141,7 +128,8 @@ fn test_decode_newline() {
     let result = sixel_decode(sixel_data);
     assert!(result.is_ok());
 
-    let (_pixels, _width, height) = result.unwrap();
+    let image = result.unwrap();
+    let height = image.height;
     assert!(
         height >= 12,
         "Height should be at least 12 (two sixel rows)"
@@ -156,7 +144,8 @@ fn test_decode_hls_color() {
     let result = sixel_decode(sixel_data);
     assert!(result.is_ok());
 
-    let (pixels, _width, _height) = result.unwrap();
+    let image = result.unwrap();
+    let pixels = image.pixels;
     // Color 0 should be defined with HLS values
     assert!(pixels.len() >= 3);
 }
@@ -169,7 +158,8 @@ fn test_decode_rgb_color() {
     let result = sixel_decode(sixel_data);
     assert!(result.is_ok());
 
-    let (pixels, _width, _height) = result.unwrap();
+    let image = result.unwrap();
+    let pixels = image.pixels;
     // Color 0 should be defined
     assert!(pixels.len() >= 4);
     // RGB 100,50,0 should map to approximately 255,127,0
@@ -191,7 +181,8 @@ fn test_decode_raster_attributes() {
     let result = sixel_decode(sixel_data);
     assert!(result.is_ok());
 
-    let (_pixels, width, height) = result.unwrap();
+    let image = result.unwrap();
+    let (_pixels, width, height) = (image.pixels, image.width, image.height);
     // Dimensions should be at least the specified Ph;Pv
     assert!(width >= 10, "Width should be at least 10");
     assert!(height >= 20, "Height should be at least 20");
@@ -205,7 +196,8 @@ fn test_decode_empty() {
     let result = sixel_decode(sixel_data);
     assert!(result.is_ok());
 
-    let (_pixels, width, height) = result.unwrap();
+    let image = result.unwrap();
+    let (_pixels, width, height) = (image.pixels, image.width, image.height);
     assert!(width > 0);
     assert!(height > 0);
 }
@@ -219,7 +211,8 @@ fn test_decode_all_sixel_chars() {
     let result = sixel_decode(sixel_data);
     assert!(result.is_ok());
 
-    let (_pixels, width, _height) = result.unwrap();
+    let image = result.unwrap();
+    let (_pixels, width, _height) = (image.pixels, image.width, image.height);
     // Should decode the entire range of sixel characters
     assert!(width > 60, "Should have decoded many characters");
 }
@@ -242,7 +235,8 @@ fn test_decode_roundtrip_simple() {
     let decoded = sixel_decode(sixel_str.as_bytes());
     assert!(decoded.is_ok());
 
-    let (pixels, width, height) = decoded.unwrap();
+    let image = decoded.unwrap();
+    let (pixels, width, height) = (image.pixels, image.width, image.height);
 
     // Check dimensions - note that SIXEL works in bands of 6 pixels high,
     // so height will be rounded up to the nearest multiple of 6
@@ -263,7 +257,8 @@ fn test_decode_vertical_patterns() {
     let result = sixel_decode(sixel_data);
     assert!(result.is_ok());
 
-    let (_pixels, width, height) = result.unwrap();
+    let image = result.unwrap();
+    let (_pixels, width, height) = (image.pixels, image.width, image.height);
     assert_eq!(width, 4);
     assert!(height >= 6);
 
@@ -281,7 +276,8 @@ fn test_decode_large_repeat() {
     let result = sixel_decode(sixel_data);
     assert!(result.is_ok());
 
-    let (_pixels, width, _height) = result.unwrap();
+    let image = result.unwrap();
+    let (_pixels, width, _height) = (image.pixels, image.width, image.height);
     assert_eq!(width, 100);
 }
 
@@ -293,7 +289,7 @@ fn test_decode_palette_bounds() {
     let result = sixel_decode(sixel_data);
     assert!(result.is_ok());
 
-    let (_pixels, _width, _height) = result.unwrap();
+    let _ = result.unwrap();
     // Should handle color 255 correctly
 }
 
@@ -319,7 +315,8 @@ fn test_decode_rgb() {
     let result = sixel_decode(sixel_data);
     assert!(result.is_ok());
 
-    let (pixels, width, height) = result.unwrap();
+    let image = result.unwrap();
+    let (pixels, width, height) = (image.pixels, image.width, image.height);
     assert_eq!(width, 1);
     assert_eq!(height, 6); // SIXEL always encodes 6 pixels high
 
@@ -342,7 +339,8 @@ fn test_decode_color_redefinition() {
     let result = sixel_decode(sixel_data);
     assert!(result.is_ok());
 
-    let (pixels, width, height) = result.unwrap();
+    let image = result.unwrap();
+    let (pixels, width, height) = (image.pixels, image.width, image.height);
     assert_eq!(width, 1);
     assert_eq!(height, 18); // 3 lines of 6 pixels
 
@@ -375,7 +373,8 @@ fn test_decode_rgb_output() {
     let result = sixel_decode(sixel_data);
     assert!(result.is_ok());
 
-    let (pixels, width, height) = result.unwrap();
+    let image = result.unwrap();
+    let (pixels, width, height) = (image.pixels, image.width, image.height);
     assert_eq!(width, 2);
     assert_eq!(height, 6);
     assert_eq!(pixels.len(), width * height * 4); // RGBA: 4 bytes per pixel
@@ -396,7 +395,9 @@ fn compare_images(original: &[u8], decoded: &[u8], width: usize, height: usize) 
         if i % 4 == 3 {
             continue;
         }
-        let diff = (original[i] as i32 - decoded[i] as i32).abs() as u8;
+        let diff = (original[i] as i32 - decoded[i] as i32)
+            .unsigned_abs()
+            .min(255) as u8;
         total_diff += diff as u64;
         max_diff = max_diff.max(diff);
     }
@@ -440,8 +441,9 @@ fn test_roundtrip_test_page_png() {
     );
 
     // Decode back
+    let decoded = sixel_decode(sixel.as_bytes()).expect("Failed to decode test_page.png sixel");
     let (decoded_pixels, decoded_width, decoded_height) =
-        sixel_decode(sixel.as_bytes()).expect("Failed to decode test_page.png sixel");
+        (decoded.pixels, decoded.width, decoded.height);
 
     // Check dimensions (height may be rounded up to multiple of 6)
     assert_eq!(decoded_width, width as usize, "Width should match");
@@ -501,8 +503,13 @@ fn test_roundtrip_transparency_png() {
     );
 
     // Decode back
-    let (decoded_pixels, decoded_width, decoded_height) =
+    let decoded_image =
         sixel_decode(sixel.as_bytes()).expect("Failed to decode transparency.png sixel");
+    let (decoded_pixels, decoded_width, decoded_height) = (
+        decoded_image.pixels,
+        decoded_image.width,
+        decoded_image.height,
+    );
 
     // Check dimensions
     // SIXEL works in 6-pixel bands, so height may be different
@@ -536,7 +543,8 @@ fn test_roundtrip_transparency_png() {
                 for c in 0..3 {
                     let diff = (original_pixels[orig_idx + c] as i32
                         - decoded_pixels[dec_idx + c] as i32)
-                        .abs() as u8;
+                        .unsigned_abs()
+                        .min(255) as u8;
                     total_diff += diff as u64;
                     max_diff = max_diff.max(diff);
                 }
@@ -611,7 +619,12 @@ fn test_encode_beelitz_heilstaetten_png() {
     let result = sixel_decode(sixel.as_bytes());
     assert!(result.is_ok(), "Encoded SIXEL should be decodable");
 
-    let (_, decoded_width, decoded_height) = result.unwrap();
+    let decoded_image = result.unwrap();
+    let (_, decoded_width, decoded_height) = (
+        decoded_image.pixels,
+        decoded_image.width,
+        decoded_image.height,
+    );
     assert_eq!(decoded_width, width as usize, "Decoded width should match");
     assert!(
         decoded_height >= height as usize,

@@ -1,28 +1,30 @@
-//! Clean-room SIXEL encoder using imagequant for high-quality color quantization.
+//! Clean-room SIXEL encoder using quantette for high-quality color quantization.
 //!
-//! This encoder uses the imagequant library for optimal color palette generation
-//! and dithering, then encodes the result to SIXEL format.
+//! This encoder uses the quantette library (MIT/Apache licensed) for optimal
+//! color palette generation and dithering, then encodes the result to SIXEL format.
 
-use crate::SixelResult;
-use imagequant::{Attributes, RGBA};
+use crate::{Result, SixelError};
+use quantette::{
+    deps::palette::Srgb, dither::FloydSteinberg, ImageRef, PaletteSize, Pipeline, QuantizeMethod,
+};
 
-/// Options for the imagequant-based SIXEL encoder.
+/// Color type for palette entries (RGB).
+#[derive(Clone, Copy, Debug)]
+struct Rgb {
+    r: u8,
+    g: u8,
+    b: u8,
+}
+
+/// Options for the quantette-based SIXEL encoder.
 #[derive(Clone, Debug)]
 pub struct EncodeOptions {
     /// Maximum number of colors in the palette (2-256).
     /// Fewer colors = smaller SIXEL output but less accurate colors.
     pub max_colors: u16,
 
-    /// Quality setting (0-100). Affects both visual quality and output size.
-    ///
-    /// Higher quality allows the encoder to use more colors from the palette
-    /// and spend more effort on optimal dithering, which typically results
-    /// in larger SIXEL output but better visual fidelity.
-    ///
-    /// - **100**: Best quality, largest output (recommended for final output)
-    /// - **80**: Good quality/size balance (good default for most uses)
-    /// - **50**: Medium quality, smaller output
-    /// - **20**: Lower quality, smallest output (for previews or thumbnails)
+    /// Quality setting (0-100). Currently unused but reserved for future use.
+    /// quantette uses Wu's algorithm which provides consistent high quality.
     pub quality: u8,
 }
 
@@ -35,7 +37,7 @@ impl Default for EncodeOptions {
     }
 }
 
-/// Encode RGBA image data into a SIXEL string using imagequant.
+/// Encode RGBA image data into a SIXEL string using quantette.
 ///
 /// # Arguments
 /// * `rgba` - Raw RGBA pixel data (4 bytes per pixel: R, G, B, A)
@@ -55,17 +57,22 @@ impl Default for EncodeOptions {
 /// let sixel = sixel_encode(&rgba, 2, 1, &EncodeOptions::default())?;
 /// println!("{}", sixel);
 /// ```
+#[must_use = "this returns the encoded SIXEL string"]
 pub fn sixel_encode(
     rgba: &[u8],
     width: usize,
     height: usize,
     opts: &EncodeOptions,
-) -> SixelResult<String> {
+) -> Result<String> {
     if width == 0 || height == 0 {
-        return Err("width and height must be > 0".into());
+        return Err(SixelError::InvalidDimensions { width, height });
     }
-    if rgba.len() != width * height * 4 {
-        return Err("rgba buffer size must be width*height*4".into());
+    let expected = width * height * 4;
+    if rgba.len() != expected {
+        return Err(SixelError::BufferSizeMismatch {
+            expected,
+            actual: rgba.len(),
+        });
     }
 
     // Check if image has any transparency
@@ -74,37 +81,40 @@ pub fn sixel_encode(
     // Create transparency mask (true = opaque, false = transparent)
     let opacity_mask: Vec<bool> = rgba.chunks_exact(4).map(|c| c[3] >= 128).collect();
 
-    // Convert to imagequant RGBA format
-    // For transparent pixels, we still need to provide a color, but we'll skip them during encoding
-    let pixels: Vec<RGBA> = rgba
+    // Convert RGBA to Srgb<u8> for quantization (quantette uses palette crate types)
+    let rgb_pixels: Vec<Srgb<u8>> = rgba
         .chunks_exact(4)
-        .map(|c| RGBA::new(c[0], c[1], c[2], c[3]))
+        .map(|c| Srgb::new(c[0], c[1], c[2]))
         .collect();
 
-    // Set up imagequant
-    // Speed is derived from quality: high quality = low speed (more effort)
-    let speed = match opts.quality {
-        90..=100 => 1, // Best quality: slowest
-        70..=89 => 3,  // High quality
-        50..=69 => 5,  // Medium quality
-        30..=49 => 7,  // Lower quality
-        _ => 10,       // Fast mode for previews
-    };
+    // Set up quantette pipeline
+    let max_colors = opts.max_colors.clamp(2, 256) as u8;
+    let palette_size = PaletteSize::try_from(max_colors).unwrap_or(PaletteSize::MAX);
 
-    let mut attr = Attributes::new();
-    attr.set_max_colors(opts.max_colors.min(256) as u32)?;
-    attr.set_quality(0, opts.quality)?;
-    attr.set_speed(speed)?;
+    // Create image reference for quantette
+    let image = ImageRef::new(width as u32, height as u32, &rgb_pixels)
+        .map_err(|e| SixelError::Quantization(e.to_string()))?;
 
-    // Create image and quantize
-    let mut img = attr.new_image(pixels, width, height, 0.0)?;
-    let mut result = attr.quantize(&mut img)?;
+    // Use Wu's quantization method for better quality with dithering
+    let indexed_image = Pipeline::new()
+        .palette_size(palette_size)
+        .quantize_method(QuantizeMethod::Wu)
+        .ditherer(FloydSteinberg::new())
+        .input_image(image)
+        .output_srgb8_indexed_image();
 
-    // Enable dithering for better quality
-    result.set_dithering_level(1.0)?;
+    // Extract palette and indices
+    let palette: Vec<Rgb> = indexed_image
+        .palette()
+        .iter()
+        .map(|c| Rgb {
+            r: c.red,
+            g: c.green,
+            b: c.blue,
+        })
+        .collect();
 
-    // Remap pixels to palette indices
-    let (palette, indices) = result.remapped(&mut img)?;
+    let indices: Vec<u8> = indexed_image.indices().to_vec();
 
     // Encode to SIXEL with transparency support
     encode_indexed_to_sixel(
@@ -118,18 +128,20 @@ pub fn sixel_encode(
 }
 
 /// Encode RGBA with default options.
-pub fn sixel_encode_default(rgba: &[u8], width: usize, height: usize) -> SixelResult<String> {
+#[inline]
+#[must_use = "this returns the encoded SIXEL string"]
+pub fn sixel_encode_default(rgba: &[u8], width: usize, height: usize) -> Result<String> {
     sixel_encode(rgba, width, height, &EncodeOptions::default())
 }
 
 fn encode_indexed_to_sixel(
-    palette: &[RGBA],
+    palette: &[Rgb],
     indices: &[u8],
     opacity_mask: &[bool],
     width: usize,
     height: usize,
     has_transparency: bool,
-) -> SixelResult<String> {
+) -> Result<String> {
     let mut out = String::new();
 
     // DCS introducer for SIXEL: ESC P p1 ; p2 ; p3 q
@@ -158,7 +170,7 @@ fn encode_indexed_to_sixel(
         write_number(&mut out, b as usize);
     }
 
-    let bands = (height + 5) / 6;
+    let bands = height.div_ceil(6);
 
     for band in 0..bands {
         let y0 = band * 6;
@@ -178,8 +190,8 @@ fn encode_indexed_to_sixel(
         }
 
         // Encode each used color
-        for color_index in 0..palette.len() {
-            if !colors_used[color_index] {
+        for (color_index, &is_used) in colors_used.iter().enumerate().take(palette.len()) {
+            if !is_used {
                 continue; // Skip colors not used in this band
             }
 

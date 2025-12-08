@@ -1,4 +1,4 @@
-use crate::{SixelError, SixelResult, SIXEL_HEIGHT_LIMIT, SIXEL_PALETTE_MAX, SIXEL_WIDTH_LIMIT};
+use crate::{Result, SixelError, SIXEL_HEIGHT_LIMIT, SIXEL_PALETTE_MAX, SIXEL_WIDTH_LIMIT};
 
 const SIXEL_CELL_HEIGHT: usize = 6;
 const MAX_REPEAT: usize = 0xffff;
@@ -9,94 +9,84 @@ use core::arch::x86_64::{__m128i, _mm_loadu_si128, _mm_storeu_si128};
 #[cfg(target_arch = "x86")]
 use core::arch::x86::{__m128i, _mm_loadu_si128, _mm_storeu_si128};
 
-/// Decodes SIXEL data when DCS parameters have already been parsed.
+/// Pixel aspect ratio from SIXEL DCS parameters.
 ///
-/// This function is useful when you've already extracted the ANSI DCS (Device Control String)
-/// parameters from the SIXEL sequence and want to decode just the SIXEL payload.
-///
-/// # Parameters
-///
-/// * `aspect_ratio` - Optional aspect ratio parameter (0-9). Controls pixel aspect ratio:
-///   - 0 or 1: 2:1 (pan=2, pad=2)
-///   - 2: 5:1 (pan=2, pad=5)
-///   - 3-4: 4:1 (pan=2, pad=4)
-///   - 5-6: 3:1 (pan=2, pad=3)
-///   - 7-8: 2:1 (pan=2, pad=2)
-///   - 9: 1:1 (pan=2, pad=1)
-///
-/// * `zero_color` - Optional background color index (0-255). Specifies which palette
-///   entry to use for background pixels.
-///
-/// * `grid_size` - Optional grid size parameter. Scales the pan and pad values.
-///   Default is 10 if not specified or 0.
-///
-/// * `sixel_data` - The raw SIXEL payload data (without the DCS introducer).
-///   Can include the string terminator (ESC \ or 0x9C), which will be stripped.
-///
-/// # Returns
-///
-/// Returns `Ok((pixels, width, height))` on success:
-/// - `pixels`: `Vec<u8>` containing RGBA pixel data in row-major order.
-///   **Format: 4 bytes per pixel [R, G, B, A] where A (alpha) is always 0xFF (255).**
-/// - `width`: Image width in pixels
-/// - `height`: Image height in pixels
-///
-/// # Pixel Format
-///
-/// The returned pixel data is in RGBA format with 4 bytes per pixel:
-/// ```text
-/// [R₀, G₀, B₀, A₀, R₁, G₁, B₁, A₁, R₂, G₂, B₂, A₂, ...]
-/// ```
-/// - Total size: `width * height * 4` bytes
-/// - Alpha channel is always 0xFF (fully opaque)
-/// - Pixels are stored in row-major order (left to right, top to bottom)
-///
-/// # Example
-///
-/// ```rust
-/// use icy_sixel::sixel_decode_from_dcs;
-///
-/// // Simple SIXEL payload (already stripped of DCS introducer)
-/// let sixel_data = b"#0;2;100;0;0#0~~~\x1b\\";
-///
-/// let (pixels, width, height) = sixel_decode_from_dcs(
-///     Some(1),  // aspect_ratio: 2:1
-///     None,     // zero_color: use default
-///     None,     // grid_size: use default
-///     sixel_data
-/// ).expect("Failed to decode");
-///
-/// println!("Decoded {}x{} image ({} bytes)", width, height, pixels.len());
-/// assert_eq!(pixels.len(), width * height * 4); // RGBA format
-///
-/// // Access first pixel
-/// let r = pixels[0];
-/// let g = pixels[1];
-/// let b = pixels[2];
-/// let a = pixels[3]; // Always 0xFF
-/// ```
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - The SIXEL data is malformed or invalid
-/// - The resulting image dimensions exceed limits (1,000,000 x 1,000,000)
-/// - Memory allocation fails
-/// - Invalid color definitions or out-of-bounds palette indices
-pub fn sixel_decode_from_dcs(
-    aspect_ratio: Option<u16>,
-    zero_color: Option<u16>,
-    grid_size: Option<u16>,
-    sixel_data: &[u8],
-) -> SixelResult<(Vec<u8>, usize, usize)> {
-    let payload = strip_string_terminator(sixel_data);
-    let settings = DcsSettings::new(aspect_ratio, zero_color, grid_size);
-    let mut decoder = SixelDecoder::new(settings)?;
-    decoder.process(payload)?;
-    decoder.finalize()
+/// SIXEL images can specify a pixel aspect ratio that indicates how pixels
+/// should be displayed. This is a historical feature from when terminals had
+/// non-square pixels. Most modern terminals display square pixels and ignore
+/// this setting, but the information is preserved for applications that need it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PixelAspectRatio {
+    /// Pixel Aspect Numerator (horizontal component)
+    pub pan: u16,
+    /// Pixel Aspect Denominator (vertical component)  
+    pub pad: u16,
 }
 
-/// Decodes a complete ANSI SIXEL sequence including DCS introducer and terminator.
+impl PixelAspectRatio {
+    /// Returns the aspect ratio as a floating point value (pan/pad).
+    /// Values > 1.0 mean pixels are wider than tall.
+    /// Values < 1.0 mean pixels are taller than wide.
+    /// Value of 1.0 means square pixels.
+    #[inline]
+    pub fn as_f32(&self) -> f32 {
+        self.pan as f32 / self.pad as f32
+    }
+
+    /// Returns true if the aspect ratio represents square pixels.
+    #[inline]
+    pub fn is_square(&self) -> bool {
+        self.pan == self.pad
+    }
+}
+
+impl Default for PixelAspectRatio {
+    fn default() -> Self {
+        Self { pan: 1, pad: 1 } // Square pixels
+    }
+}
+
+/// A decoded SIXEL image with full metadata.
+///
+/// This struct contains the decoded pixel data along with additional
+/// information from the SIXEL stream such as aspect ratio.
+#[derive(Debug, Clone)]
+pub struct SixelImage {
+    /// RGBA pixel data (4 bytes per pixel: R, G, B, A)
+    pub pixels: Vec<u8>,
+    /// Image width in pixels
+    pub width: usize,
+    /// Image height in pixels
+    pub height: usize,
+    /// Pixel aspect ratio from DCS parameters
+    pub aspect_ratio: PixelAspectRatio,
+    /// Whether the image uses transparency (P2=1)
+    pub has_transparency: bool,
+}
+
+impl SixelImage {
+    /// Returns the corrected dimensions if aspect ratio is applied.
+    ///
+    /// For non-square pixels, returns the dimensions that would result
+    /// from scaling the image to have square pixels.
+    pub fn corrected_dimensions(&self) -> (usize, usize) {
+        if self.aspect_ratio.is_square() {
+            (self.width, self.height)
+        } else if self.aspect_ratio.pan > self.aspect_ratio.pad {
+            // Wider pixels: stretch horizontally
+            let new_width =
+                (self.width * self.aspect_ratio.pan as usize) / self.aspect_ratio.pad as usize;
+            (new_width, self.height)
+        } else {
+            // Taller pixels: stretch vertically
+            let new_height =
+                (self.height * self.aspect_ratio.pad as usize) / self.aspect_ratio.pan as usize;
+            (self.width, new_height)
+        }
+    }
+}
+
+/// Decodes a complete ANSI SIXEL sequence.
 ///
 /// This is the main entry point for decoding SIXEL graphics. It handles the full
 /// ANSI DCS (Device Control String) sequence format.
@@ -140,22 +130,22 @@ pub fn sixel_decode_from_dcs(
 /// ```rust
 /// # use icy_sixel::sixel_decode;
 /// # let sixel_data = b"\x1bPq#0;2;100;0;0#0~~~\x1b\\";
-/// let (rgba_pixels, width, height) = sixel_decode(sixel_data)?;
+/// let image = sixel_decode(sixel_data)?;
 ///
 /// // Extract RGB (dropping alpha channel)
-/// let rgb_pixels: Vec<u8> = rgba_pixels
+/// let rgb_pixels: Vec<u8> = image.pixels
 ///     .chunks(4)
 ///     .flat_map(|rgba| [rgba[0], rgba[1], rgba[2]])
 ///     .collect();
 ///
 /// // Access individual pixels
-/// for y in 0..height {
-///     for x in 0..width {
-///         let idx = (y * width + x) * 4;
-///         let r = rgba_pixels[idx];
-///         let g = rgba_pixels[idx + 1];
-///         let b = rgba_pixels[idx + 2];
-///         let a = rgba_pixels[idx + 3]; // Always 0xFF
+/// for y in 0..image.height {
+///     for x in 0..image.width {
+///         let idx = (y * image.width + x) * 4;
+///         let r = image.pixels[idx];
+///         let g = image.pixels[idx + 1];
+///         let b = image.pixels[idx + 2];
+///         let a = image.pixels[idx + 3]; // Always 0xFF
 ///     }
 /// }
 /// # Ok::<(), Box<dyn std::error::Error>>(())
@@ -170,14 +160,14 @@ pub fn sixel_decode_from_dcs(
 /// let sixel_data = b"\x1bPq#0;2;100;0;0#0~~~\x1b\\";
 ///
 /// match sixel_decode(sixel_data) {
-///     Ok((pixels, width, height)) => {
-///         println!("Decoded {}x{} SIXEL image", width, height);
-///         println!("Pixel data: {} bytes (RGBA format)", pixels.len());
-///         assert_eq!(pixels.len(), width * height * 4);
+///     Ok(image) => {
+///         println!("Decoded {}x{} SIXEL image", image.width, image.height);
+///         println!("Pixel data: {} bytes (RGBA format)", image.pixels.len());
+///         assert_eq!(image.pixels.len(), image.width * image.height * 4);
 ///         
 ///         // First pixel color
 ///         println!("First pixel: R={}, G={}, B={}, A={}",
-///                  pixels[0], pixels[1], pixels[2], pixels[3]);
+///                  image.pixels[0], image.pixels[1], image.pixels[2], image.pixels[3]);
 ///     }
 ///     Err(e) => eprintln!("Failed to decode: {}", e),
 /// }
@@ -190,14 +180,14 @@ pub fn sixel_decode_from_dcs(
 /// use image;
 ///
 /// let sixel_data = b"\x1bPq#0;2;100;0;0#0~~~\x1b\\";
-/// let (pixels, width, height) = sixel_decode(sixel_data)?;
+/// let image_data = sixel_decode(sixel_data)?;
 ///
 /// // Save as RGBA PNG
 /// image::save_buffer(
 ///     "output.png",
-///     &pixels,
-///     width as u32,
-///     height as u32,
+///     &image_data.pixels,
+///     image_data.width as u32,
+///     image_data.height as u32,
 ///     image::ColorType::Rgba8,
 /// )?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
@@ -221,14 +211,70 @@ pub fn sixel_decode_from_dcs(
 /// - Efficient palette caching
 ///
 /// Typical performance: ~3ms to decode a 600x450 image on modern hardware.
-pub fn sixel_decode(data: &[u8]) -> SixelResult<(Vec<u8>, usize, usize)> {
+///
+/// # Example
+///
+/// ```rust
+/// use icy_sixel::sixel_decode;
+///
+/// let sixel_data = b"\x1bPq#0;2;100;0;0#0~~~\x1b\\";
+/// let image = sixel_decode(sixel_data)?;
+///
+/// println!("Image: {}x{}", image.width, image.height);
+/// println!("Aspect ratio: {}:{}", image.aspect_ratio.pan, image.aspect_ratio.pad);
+///
+/// // Access pixels (RGBA format, 4 bytes per pixel)
+/// let first_pixel = &image.pixels[0..4];
+/// # Ok::<(), icy_sixel::SixelError>(())
+/// ```
+#[must_use = "this returns the decoded SixelImage"]
+pub fn sixel_decode(data: &[u8]) -> Result<SixelImage> {
     let parsed = AnsiPayload::parse(data)?;
-    sixel_decode_from_dcs(
-        parsed.aspect_ratio,
-        parsed.zero_color,
-        parsed.grid_size,
-        parsed.payload,
-    )
+    let settings = DcsSettings::new(parsed.aspect_ratio, parsed.zero_color, parsed.grid_size);
+
+    // Calculate aspect ratio from settings
+    let mut pan = 2usize;
+    let mut pad = 1usize;
+
+    if let Some(ar) = parsed.aspect_ratio {
+        pad = match ar {
+            0 | 1 => 2,
+            2 => 5,
+            3 | 4 => 4,
+            5 | 6 => 3,
+            7 | 8 => 2,
+            9 => 1,
+            _ => 1,
+        };
+    }
+
+    if let Some(mut grid) = parsed.grid_size {
+        if grid == 0 {
+            grid = 10;
+        }
+        pan = (pan * grid as usize).max(1) / 10;
+        pad = (pad * grid as usize).max(1) / 10;
+        pan = pan.max(1);
+        pad = pad.max(1);
+    }
+
+    let has_transparency = parsed.zero_color == Some(1);
+
+    let payload = strip_string_terminator(parsed.payload);
+    let mut decoder = SixelDecoder::new(settings)?;
+    decoder.process(payload)?;
+    let (pixels, width, height) = decoder.finalize()?;
+
+    Ok(SixelImage {
+        pixels,
+        width,
+        height,
+        aspect_ratio: PixelAspectRatio {
+            pan: pan as u16,
+            pad: pad as u16,
+        },
+        has_transparency,
+    })
 }
 
 struct AnsiPayload<'a> {
@@ -239,7 +285,7 @@ struct AnsiPayload<'a> {
 }
 
 impl<'a> AnsiPayload<'a> {
-    fn parse(bytes: &'a [u8]) -> SixelResult<Self> {
+    fn parse(bytes: &'a [u8]) -> Result<Self> {
         let mut idx = 0;
         while idx < bytes.len() {
             match bytes[idx] {
@@ -264,7 +310,7 @@ impl<'a> AnsiPayload<'a> {
         })
     }
 
-    fn parse_dcs(bytes: &'a [u8], mut idx: usize) -> SixelResult<Self> {
+    fn parse_dcs(bytes: &'a [u8], mut idx: usize) -> Result<Self> {
         let mut params: [u16; 16] = [0; 16];
         let mut param_count = 0usize;
         let mut current: u16 = 0;
@@ -296,14 +342,14 @@ impl<'a> AnsiPayload<'a> {
                     break;
                 }
                 0x1b | 0x9c => {
-                    return Err(SixelError::BadInput.into());
+                    return Err(SixelError::InvalidData("malformed SIXEL data".to_string()));
                 }
                 _ => idx += 1,
             }
         }
 
         if idx > bytes.len() {
-            return Err(SixelError::BadInput.into());
+            return Err(SixelError::InvalidData("malformed SIXEL data".to_string()));
         }
 
         let payload_start = idx;
@@ -389,7 +435,7 @@ struct SixelDecoder {
 }
 
 impl SixelDecoder {
-    fn new(settings: DcsSettings) -> SixelResult<Self> {
+    fn new(settings: DcsSettings) -> Result<Self> {
         let palette = Palette::new();
         let background_index = 0usize;
         let repeat = 1usize;
@@ -437,7 +483,7 @@ impl SixelDecoder {
                 7 | 8 => 2,
                 9 => 1,
                 _ => self.pad,
-            } as usize;
+            };
         }
 
         if let Some(mut grid) = settings.grid_size {
@@ -451,7 +497,7 @@ impl SixelDecoder {
         }
     }
 
-    fn process(&mut self, data: &[u8]) -> SixelResult<()> {
+    fn process(&mut self, data: &[u8]) -> Result<()> {
         let mut idx = 0usize;
         while idx < data.len() {
             match data[idx] {
@@ -467,14 +513,14 @@ impl SixelDecoder {
                     self.pos_y = self
                         .pos_y
                         .checked_add(SIXEL_CELL_HEIGHT)
-                        .ok_or(SixelError::BadIntegerOverflow)?;
+                        .ok_or(SixelError::IntegerOverflow)?;
                     idx += 1;
                 }
                 b'!' => {
                     let (value, consumed) = read_number(data, idx + 1);
                     let repeat = if value == 0 { 1 } else { value };
                     if repeat > MAX_REPEAT {
-                        return Err(SixelError::BadInput.into());
+                        return Err(SixelError::InvalidData("malformed SIXEL data".to_string()));
                     }
                     self.repeat = repeat;
                     idx += 1 + consumed;
@@ -499,7 +545,7 @@ impl SixelDecoder {
     }
 
     #[inline]
-    fn handle_sixel(&mut self, ch: u8) -> SixelResult<()> {
+    fn handle_sixel(&mut self, ch: u8) -> Result<()> {
         let bits = ch - b'?';
         let span = self.repeat.max(1);
         self.repeat = 1;
@@ -509,7 +555,7 @@ impl SixelDecoder {
 
         // Quick overflow check
         if width_needed > SIXEL_WIDTH_LIMIT || height_needed > SIXEL_HEIGHT_LIMIT {
-            return Err(SixelError::BadInput.into());
+            return Err(SixelError::InvalidData("malformed SIXEL data".to_string()));
         }
 
         let background = self.background_rgb();
@@ -569,7 +615,7 @@ impl SixelDecoder {
         Ok(())
     }
 
-    fn handle_color_command(&mut self, data: &[u8], start: usize) -> SixelResult<usize> {
+    fn handle_color_command(&mut self, data: &[u8], start: usize) -> Result<usize> {
         let mut storage = [0i32; 5];
         let (consumed, count) = collect_params(data, start, &mut storage);
         let params = &storage[..count];
@@ -603,7 +649,7 @@ impl SixelDecoder {
         Ok(consumed)
     }
 
-    fn handle_raster_command(&mut self, data: &[u8], start: usize) -> SixelResult<usize> {
+    fn handle_raster_command(&mut self, data: &[u8], start: usize) -> Result<usize> {
         let mut storage = [0i32; 4];
         let (consumed, count) = collect_params(data, start, &mut storage);
         if count > 0 {
@@ -638,9 +684,17 @@ impl SixelDecoder {
         Ok(consumed)
     }
 
-    fn guard_dimensions(&self, width: usize, height: usize) -> SixelResult<()> {
+    fn guard_dimensions(&self, width: usize, height: usize) -> Result<()> {
         if width > SIXEL_WIDTH_LIMIT || height > SIXEL_HEIGHT_LIMIT {
-            return Err(SixelError::BadInput.into());
+            return Err(SixelError::InvalidData("malformed SIXEL data".to_string()));
+        }
+        // Also guard against total pixel count to prevent memory exhaustion
+        // Max 256 MB of pixel data (64 million pixels * 4 bytes)
+        const MAX_PIXELS: usize = 64 * 1024 * 1024;
+        if width.saturating_mul(height) > MAX_PIXELS {
+            return Err(SixelError::InvalidData(
+                "image dimensions too large".to_string(),
+            ));
         }
         Ok(())
     }
@@ -654,7 +708,7 @@ impl SixelDecoder {
         }
     }
 
-    fn finalize(mut self) -> SixelResult<(Vec<u8>, usize, usize)> {
+    fn finalize(mut self) -> Result<(Vec<u8>, usize, usize)> {
         let width = self.max_x + 1;
         let height = self.max_y + 1;
         let desired_width = width.max(self.target_width.max(1));
@@ -774,18 +828,22 @@ impl Canvas {
         }
     }
 
-    fn ensure_visible(
-        &mut self,
-        width: usize,
-        height: usize,
-        background: [u8; 4],
-    ) -> SixelResult<()> {
+    fn ensure_visible(&mut self, width: usize, height: usize, background: [u8; 4]) -> Result<()> {
         if width <= self.width && height <= self.height {
             return Ok(());
         }
 
         let new_width = width.max(self.width);
         let new_height = height.max(self.height);
+
+        // Guard against memory exhaustion - max 256 MB of pixel data
+        const MAX_PIXELS: usize = 64 * 1024 * 1024;
+        if new_width.saturating_mul(new_height) > MAX_PIXELS {
+            return Err(SixelError::InvalidData(
+                "image dimensions too large".to_string(),
+            ));
+        }
+
         self.resize(new_width.max(1), new_height.max(1), background);
         Ok(())
     }
@@ -908,11 +966,9 @@ fn collect_params(data: &[u8], start: usize, storage: &mut [i32]) -> (usize, usi
         }
     }
 
-    if has_digit || last_was_separator {
-        if written < storage.len() {
-            storage[written] = if has_digit { current } else { 0 };
-            written += 1;
-        }
+    if (has_digit || last_was_separator) && written < storage.len() {
+        storage[written] = if has_digit { current } else { 0 };
+        written += 1;
     }
 
     (consumed, written)
