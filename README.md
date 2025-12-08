@@ -139,6 +139,26 @@ Original image for reference (596×936 pixels, 879 KB PNG):
 | Wu | 1.1 MB | ![Wu](assets/wu/256colors_diffusion_full.png) |
 | K-means | 1.3 MB | ![K-means](assets/kmeans/256colors_diffusion_full.png) |
 
+### Encoded SIXEL File Sizes
+
+Complete size matrix for the test image (596×936 pixels):
+
+#### Wu Quantizer
+
+| Colors | Off (0.0) | Low (0.3) | Medium (0.5) | Full (0.875) |
+|--------|-----------|-----------|--------------|--------------|
+| 256 | 698 KB | 784 KB | 858 KB | 1,066 KB |
+| 16 | 420 KB | 427 KB | 432 KB | 439 KB |
+| 2 | 71 KB | 84 KB | 93 KB | 105 KB |
+
+#### K-means Quantizer
+
+| Colors | Off (0.0) | Low (0.3) | Medium (0.5) | Full (0.875) |
+|--------|-----------|-----------|--------------|--------------|
+| 256 | 1,151 KB | 1,182 KB | 1,213 KB | 1,261 KB |
+| 16 | 422 KB | 428 KB | 431 KB | 437 KB |
+| 2 | 71 KB | 85 KB | 94 KB | 107 KB |
+
 ## Benchmarks
 
 Performance measurements on the test image (596×936 pixels, beelitz_heilstätten.png):
