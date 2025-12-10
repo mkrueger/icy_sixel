@@ -231,12 +231,21 @@ impl SixelImage {
 pub fn sixel_decode(data: &[u8]) -> Result<SixelImage> {
     let parsed = AnsiPayload::parse(data)?;
     let settings = DcsSettings::new(parsed.aspect_ratio, parsed.zero_color, parsed.grid_size);
+    let payload = strip_string_terminator(parsed.payload);
+    sixel_decode_from_dcs(payload, settings)
+}
+
+#[must_use = "this returns the decoded SixelImage"]
+pub fn sixel_decode_from_dcs(payload: &[u8], settings: DcsSettings) -> Result<SixelImage> {
+    let mut decoder = SixelDecoder::new(settings)?;
+    decoder.process(payload)?;
+    let (pixels, width, height) = decoder.finalize()?;
 
     // Calculate aspect ratio from settings
     let mut pan = 2usize;
     let mut pad = 1usize;
 
-    if let Some(ar) = parsed.aspect_ratio {
+    if let Some(ar) = settings.aspect_ratio {
         pad = match ar {
             0 | 1 => 2,
             2 => 5,
@@ -248,7 +257,7 @@ pub fn sixel_decode(data: &[u8]) -> Result<SixelImage> {
         };
     }
 
-    if let Some(mut grid) = parsed.grid_size {
+    if let Some(mut grid) = settings.grid_size {
         if grid == 0 {
             grid = 10;
         }
@@ -258,12 +267,7 @@ pub fn sixel_decode(data: &[u8]) -> Result<SixelImage> {
         pad = pad.max(1);
     }
 
-    let has_transparency = parsed.zero_color == Some(1);
-
-    let payload = strip_string_terminator(parsed.payload);
-    let mut decoder = SixelDecoder::new(settings)?;
-    decoder.process(payload)?;
-    let (pixels, width, height) = decoder.finalize()?;
+    let has_transparency = settings.zero_color == Some(1);
 
     Ok(SixelImage {
         pixels,
@@ -398,7 +402,7 @@ impl<'a> AnsiPayload<'a> {
 }
 
 #[derive(Clone, Copy)]
-struct DcsSettings {
+pub struct DcsSettings {
     aspect_ratio: Option<u16>,
     #[allow(dead_code)]
     zero_color: Option<u16>,
