@@ -410,7 +410,7 @@ pub struct DcsSettings {
 }
 
 impl DcsSettings {
-    fn new(aspect_ratio: Option<u16>, zero_color: Option<u16>, grid_size: Option<u16>) -> Self {
+    pub fn new(aspect_ratio: Option<u16>, zero_color: Option<u16>, grid_size: Option<u16>) -> Self {
         Self {
             aspect_ratio,
             zero_color,

@@ -36,7 +36,7 @@ use thiserror::Error;
 pub mod decoder;
 pub mod encoder;
 
-pub use decoder::{sixel_decode, PixelAspectRatio, SixelImage};
+pub use decoder::{sixel_decode, sixel_decode_from_dcs, PixelAspectRatio, SixelImage, DcsSettings};
 pub use encoder::{sixel_encode, sixel_encode_default, EncodeOptions, QuantizeMethod};
 
 /// Errors that can occur during SIXEL encoding or decoding.
