@@ -33,7 +33,7 @@ icy_sixel = "0.5"
 ### Encoding an Image to SIXEL
 
 ```rust
-use icy_sixel::{sixel_encode, EncodeOptions};
+use icy_sixel::SixelImage;
 
 // RGBA image data (4 bytes per pixel)
 let rgba = vec![
@@ -42,35 +42,42 @@ let rgba = vec![
     0, 0, 255, 255,   // Blue pixel
 ];
 
-let options = EncodeOptions::default();
-let sixel = sixel_encode(&rgba, 3, 1, &options)?;
+let image = SixelImage::try_from_rgba(rgba, 3, 1)?;
+let sixel = image.encode()?;
 print!("{}", sixel);
 ```
 
 ### Encoding with Custom Options
 
 ```rust
-use icy_sixel::{sixel_encode, EncodeOptions, QuantizeMethod, PixelAspectRatio, BackgroundMode};
+use icy_sixel::{BackgroundMode, EncodeOptions, PixelAspectRatio, QuantizeMethod, SixelImage};
+
+// RGBA image data (4 bytes per pixel)
+let rgba = vec![255, 0, 0, 255];
+let width = 1;
+let height = 1;
 
 let options = EncodeOptions {
     max_colors: 64,                              // Use only 64 colors (2-256)
     diffusion: 0.875,                            // Floyd-Steinberg dithering strength (0.0-1.0)
     quantize_method: QuantizeMethod::Wu,         // or QuantizeMethod::kmeans()
-    pixel_aspect_ratio: PixelAspectRatio::Square, // 1:1 pixels (modern terminals)
-    background_mode: BackgroundMode::Transparent, // Undrawn pixels stay transparent
 };
 
-let sixel = sixel_encode(&rgba, width, height, &options)?;
+let image = SixelImage::try_from_rgba(rgba, width, height)?
+    .with_aspect_ratio(PixelAspectRatio::Square)      // 1:1 pixels (modern terminals)
+    .with_background_mode(BackgroundMode::Transparent); // Undrawn pixels stay transparent
+
+let sixel = image.encode_with(&options)?;
 ```
 
 ### Decoding SIXEL to Image Data
 
 ```rust
-use icy_sixel::sixel_decode;
+use icy_sixel::SixelImage;
 
 let sixel_data = b"\x1bPq#0;2;100;0;0#0~-\x1b\\";
-let image = sixel_decode(sixel_data)?;
-// image.rgba contains RGBA pixel data (4 bytes per pixel)
+let image = SixelImage::decode(sixel_data)?;
+// image.pixels contains RGBA pixel data (4 bytes per pixel)
 // image.width and image.height contain dimensions
 ```
 
@@ -203,4 +210,9 @@ Performance measurements on the test image (596×936 pixels, beelitz_heilstätte
 
 ## License
 
-Licensed under the Apache License, Version 2.0 — see [LICENSE](LICENSE) for details.
+Licensed under either of
+
+- Apache License, Version 2.0
+- MIT license
+
+at your option.

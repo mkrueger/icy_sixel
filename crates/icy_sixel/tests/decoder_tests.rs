@@ -5,7 +5,7 @@ fn test_decode_simple_sixel() {
     // Simple 2x2 black square
     let sixel_data = b"\x1bPq\"1;1;2;2#0;2;0;0;0#0~~\x1b\\";
 
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok(), "Decoding should succeed");
 
     let image = result.unwrap();
@@ -24,7 +24,7 @@ fn test_decode_with_aspect_ratio() {
     // Test that aspect ratio is parsed from DCS params
     let sixel_data = b"\x1bP2q#0;2;100;0;0#0~~\x1b\\"; // P1=2 means aspect 5:1
 
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok(), "Decoding should succeed");
 
     let image = result.unwrap();
@@ -38,7 +38,7 @@ fn test_decode_with_colors() {
     // SIXEL with color definition
     let sixel_data = b"\x1bPq#0;2;100;0;0#0~~@@~~\x1b\\";
 
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok());
 
     let image = result.unwrap();
@@ -55,7 +55,7 @@ fn test_decode_multicolor() {
     // Multiple colors
     let sixel_data = b"\x1bPq#0;2;100;0;0#1;2;0;100;0#0~#1~\x1b\\";
 
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok());
 
     let image = result.unwrap();
@@ -69,7 +69,7 @@ fn test_decode_with_repeat() {
     // Test repeat count !
     let sixel_data = b"\x1bPq#0!5~\x1b\\";
 
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok());
 
     let image = result.unwrap();
@@ -82,7 +82,7 @@ fn test_decode_carriage_return() {
     // Test $ (carriage return)
     let sixel_data = b"\x1bPq#0~~$~~\x1b\\";
 
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok());
 
     let image = result.unwrap();
@@ -96,7 +96,7 @@ fn test_decode_color_overlay_preserves_previous_pixels() {
     // The previously drawn red pixels must survive in rows where the second pass has zero bits.
     let sixel_data = b"\x1bPq#2~$#3_\x1b\\";
 
-    let image = sixel_decode(sixel_data).expect("Decoding overlay should work");
+    let image = SixelImage::decode(sixel_data).expect("Decoding overlay should work");
     let (pixels, width, height) = (image.pixels, image.width, image.height);
     assert_eq!(width, 1, "Overlay sample should be one column wide");
     assert!(
@@ -125,7 +125,7 @@ fn test_decode_newline() {
     // Test - (new line)
     let sixel_data = b"\x1bPq#0~~-~~\x1b\\";
 
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok());
 
     let image = result.unwrap();
@@ -141,7 +141,7 @@ fn test_decode_hls_color() {
     // HLS color space: #Pc;1;Ph;Pl;Ps
     let sixel_data = b"\x1bPq#0;1;120;50;100#0~\x1b\\";
 
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok());
 
     let image = result.unwrap();
@@ -155,7 +155,7 @@ fn test_decode_rgb_color() {
     // RGB color space: #Pc;2;Pr;Pg;Pb
     let sixel_data = b"\x1bPq#0;2;100;50;0#0~\x1b\\";
 
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok());
 
     let image = result.unwrap();
@@ -178,7 +178,7 @@ fn test_decode_raster_attributes() {
     // Test raster attributes "Pan;Pad;Ph;Pv
     let sixel_data = b"\x1bPq\"1;1;10;20#0~\x1b\\";
 
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok());
 
     let image = result.unwrap();
@@ -193,7 +193,7 @@ fn test_decode_empty() {
     // Empty SIXEL
     let sixel_data = b"\x1bPq\x1b\\";
 
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok());
 
     let image = result.unwrap();
@@ -208,7 +208,7 @@ fn test_decode_all_sixel_chars() {
     let sixel_data =
         b"\x1bPq#0?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\x1b\\";
 
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok());
 
     let image = result.unwrap();
@@ -227,12 +227,13 @@ fn test_decode_roundtrip_simple() {
         255, 255, 0, 255, // yellow
     ];
 
-    let encoded = sixel_encode(&original_pixels, 2, 2, &EncodeOptions::default());
+    let image = SixelImage::from_rgba(original_pixels.clone(), 2, 2);
+    let encoded = image.encode();
 
     assert!(encoded.is_ok());
     let sixel_str = encoded.unwrap();
 
-    let decoded = sixel_decode(sixel_str.as_bytes());
+    let decoded = SixelImage::decode(sixel_str.as_bytes());
     assert!(decoded.is_ok());
 
     let image = decoded.unwrap();
@@ -254,7 +255,7 @@ fn test_decode_vertical_patterns() {
     // ? = 0b000000, @ = 0b000001, A = 0b000010, etc.
     let sixel_data = b"\x1bPq#0?@A~\x1b\\";
 
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok());
 
     let image = result.unwrap();
@@ -273,7 +274,7 @@ fn test_decode_large_repeat() {
     // Test large repeat count
     let sixel_data = b"\x1bPq#0!100~\x1b\\";
 
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok());
 
     let image = result.unwrap();
@@ -286,7 +287,7 @@ fn test_decode_palette_bounds() {
     // Test palette color index at boundary
     let sixel_data = b"\x1bPq#255;2;50;50;50#255~\x1b\\";
 
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok());
 
     let _ = result.unwrap();
@@ -298,12 +299,12 @@ fn test_decode_escape_sequences() {
     // Test various escape sequence forms
     // ESC P ... ESC \ (7-bit)
     let sixel_data = b"\x1bP0;0;0q#0~\x1b\\";
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok());
 
     // DCS ... ST (8-bit)
     let sixel_data = b"\x90q#0~\x9c";
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok());
 }
 
@@ -312,7 +313,7 @@ fn test_decode_rgb() {
     // Simple SIXEL with a red pixel
     let sixel_data = b"\x1bPq#2;2;100;0;0~\x1b\\";
 
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok());
 
     let image = result.unwrap();
@@ -336,7 +337,7 @@ fn test_decode_color_redefinition() {
         #0;2;0;0;100~\
         \x1b\\";
 
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok());
 
     let image = result.unwrap();
@@ -370,7 +371,7 @@ fn test_decode_rgb_output() {
     // Test that RGB decoder works with multiple colors
     let sixel_data = b"\x1bPq#1;2;50;50;0#2;2;0;50;50#1~#2~\x1b\\";
 
-    let result = sixel_decode(sixel_data);
+    let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok());
 
     let image = result.unwrap();
@@ -422,13 +423,8 @@ fn test_roundtrip_test_page_png() {
     let original_pixels = rgba_img.into_raw();
 
     // Encode to SIXEL
-    let sixel = sixel_encode(
-        &original_pixels,
-        width as usize,
-        height as usize,
-        &EncodeOptions::default(),
-    )
-    .expect("Failed to encode test_page.png");
+    let image = SixelImage::from_rgba(original_pixels.clone(), width as usize, height as usize);
+    let sixel = image.encode().expect("Failed to encode test_page.png");
 
     assert!(!sixel.is_empty(), "SIXEL output should not be empty");
     assert!(
@@ -441,7 +437,8 @@ fn test_roundtrip_test_page_png() {
     );
 
     // Decode back
-    let decoded = sixel_decode(sixel.as_bytes()).expect("Failed to decode test_page.png sixel");
+    let decoded =
+        SixelImage::decode(sixel.as_bytes()).expect("Failed to decode test_page.png sixel");
     let (decoded_pixels, decoded_width, decoded_height) =
         (decoded.pixels, decoded.width, decoded.height);
 
@@ -482,13 +479,8 @@ fn test_roundtrip_transparency_png() {
     let original_pixels = rgba_img.into_raw();
 
     // Encode to SIXEL
-    let sixel = sixel_encode(
-        &original_pixels,
-        width as usize,
-        height as usize,
-        &EncodeOptions::default(),
-    )
-    .expect("Failed to encode transparency.png");
+    let image = SixelImage::from_rgba(original_pixels.clone(), width as usize, height as usize);
+    let sixel = image.encode().expect("Failed to encode transparency.png");
 
     assert!(!sixel.is_empty(), "SIXEL output should not be empty");
     // Note: With transparency, the DCS header includes P2=1 parameter: ESC P 0;1;0 q
@@ -504,7 +496,7 @@ fn test_roundtrip_transparency_png() {
 
     // Decode back
     let decoded_image =
-        sixel_decode(sixel.as_bytes()).expect("Failed to decode transparency.png sixel");
+        SixelImage::decode(sixel.as_bytes()).expect("Failed to decode transparency.png sixel");
     let (decoded_pixels, decoded_width, decoded_height) = (
         decoded_image.pixels,
         decoded_image.width,
@@ -592,13 +584,10 @@ fn test_encode_beelitz_heilstaetten_png() {
     println!("beelitz_heilstätten.png: {}x{}", width, height);
 
     // Encode to SIXEL - this should just work without errors
-    let sixel = sixel_encode(
-        &original_pixels,
-        width as usize,
-        height as usize,
-        &EncodeOptions::default(),
-    )
-    .expect("Failed to encode beelitz_heilstätten.png");
+    let image = SixelImage::from_rgba(original_pixels, width as usize, height as usize);
+    let sixel = image
+        .encode()
+        .expect("Failed to encode beelitz_heilstätten.png");
 
     assert!(!sixel.is_empty(), "SIXEL output should not be empty");
     assert!(
@@ -616,7 +605,7 @@ fn test_encode_beelitz_heilstaetten_png() {
     );
 
     // Optionally decode to verify it's valid SIXEL
-    let result = sixel_decode(sixel.as_bytes());
+    let result = SixelImage::decode(sixel.as_bytes());
     assert!(result.is_ok(), "Encoded SIXEL should be decodable");
 
     let decoded_image = result.unwrap();

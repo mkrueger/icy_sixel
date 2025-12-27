@@ -44,26 +44,6 @@ pub struct EncodeOptions {
     ///
     /// For most use cases, Wu's method provides excellent results.
     pub quantize_method: QuantizeMethod,
-
-    /// Pixel aspect ratio (P1 parameter in DCS introducer).
-    ///
-    /// Controls how terminals interpret pixel dimensions:
-    /// - [`PixelAspectRatio::Square`]: 1:1 ratio (default, best for modern terminals)
-    /// - [`PixelAspectRatio::Ratio2To1`]: 2:1 ratio (VT240/VT340 native)
-    ///
-    /// Most modern terminals ignore this and always use square pixels.
-    /// Use `PixelAspectRatio::Square` for best compatibility.
-    pub pixel_aspect_ratio: PixelAspectRatio,
-
-    /// Background color mode (P2 parameter in DCS introducer).
-    ///
-    /// Controls how undrawn pixels are handled:
-    /// - [`BackgroundMode::Transparent`]: Undrawn pixels keep their current color (default)
-    /// - [`BackgroundMode::Opaque`]: Undrawn pixels are set to background color
-    ///
-    /// Use `Transparent` for images with alpha channel or when overlaying on terminal content.
-    /// Use `Opaque` when you want a solid background rectangle.
-    pub background_mode: BackgroundMode,
 }
 
 impl Default for EncodeOptions {
@@ -72,8 +52,6 @@ impl Default for EncodeOptions {
             max_colors: 256,
             diffusion: FloydSteinberg::DEFAULT_ERROR_DIFFUSION,
             quantize_method: QuantizeMethod::Wu,
-            pixel_aspect_ratio: PixelAspectRatio::Square,
-            background_mode: BackgroundMode::Transparent,
         }
     }
 }
@@ -92,10 +70,11 @@ impl Default for EncodeOptions {
 ///
 /// # Example
 /// ```ignore
-/// use icy_sixel::{sixel_encode, EncodeOptions};
+/// use icy_sixel::{SixelImage, EncodeOptions};
 ///
 /// let rgba = vec![255u8, 0, 0, 255, 0, 255, 0, 255]; // 2 pixels: red, green
-/// let sixel = sixel_encode(&rgba, 2, 1, &EncodeOptions::default())?;
+/// let image = SixelImage::from_rgba(rgba, 2, 1);
+/// let sixel = image.encode_with(&EncodeOptions::default())?;
 /// println!("{}", sixel);
 /// ```
 #[must_use = "this returns the encoded SIXEL string"]
@@ -104,6 +83,24 @@ pub fn sixel_encode(
     width: usize,
     height: usize,
     opts: &EncodeOptions,
+) -> Result<String> {
+    sixel_encode_impl(
+        rgba,
+        width,
+        height,
+        opts,
+        PixelAspectRatio::default(),
+        BackgroundMode::default(),
+    )
+}
+
+pub(crate) fn sixel_encode_impl(
+    rgba: &[u8],
+    width: usize,
+    height: usize,
+    opts: &EncodeOptions,
+    pixel_aspect_ratio: PixelAspectRatio,
+    background_mode: BackgroundMode,
 ) -> Result<String> {
     if width == 0 || height == 0 {
         return Err(SixelError::InvalidDimensions { width, height });
@@ -175,15 +172,17 @@ pub fn sixel_encode(
         &opacity_mask,
         width,
         height,
-        opts.pixel_aspect_ratio,
-        opts.background_mode,
+        pixel_aspect_ratio,
+        background_mode,
     )
 }
 
 /// Encode RGBA with default options.
 #[inline]
+#[deprecated(since = "0.5.0", note = "use SixelImage::from_rgba().encode() instead")]
 #[must_use = "this returns the encoded SIXEL string"]
 pub fn sixel_encode_default(rgba: &[u8], width: usize, height: usize) -> Result<String> {
+    #[allow(deprecated)]
     sixel_encode(rgba, width, height, &EncodeOptions::default())
 }
 
@@ -343,6 +342,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(deprecated)]
     fn test_encode_simple() {
         let rgba = vec![255u8, 0, 0, 255]; // 1x1 red pixel
         let result = sixel_encode(&rgba, 1, 1, &EncodeOptions::default());
@@ -353,6 +353,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_encode_2x2() {
         let rgba = vec![
             255, 0, 0, 255, // red
@@ -368,6 +369,7 @@ mod tests {
     //like 0 (default) then most terminals will do things correctly but the Windows Terminal will default to a non-square sixel making the
     //image print out with an incorrect aspect ratio.
     #[test]
+    #[allow(deprecated)]
     fn test_encode_is_set_to_square_pixels() {
         let rgba = vec![
             255, 0, 0, 255, // red
@@ -378,6 +380,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_invalid_dimensions() {
         let rgba = vec![0u8; 16];
 

@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use icy_sixel::{sixel_encode, EncodeOptions, QuantizeMethod};
+use icy_sixel::{EncodeOptions, QuantizeMethod, SixelImage};
 use std::hint::black_box;
 
 fn load_test_page_png() -> (Vec<u8>, usize, usize) {
@@ -40,7 +40,8 @@ fn bench_encode_test_page(c: &mut Criterion) {
 
     c.bench_function(&format!("encode_test_page_{}x{}", width, height), |b| {
         b.iter(|| {
-            let result = sixel_encode(black_box(&rgba), width, height, &opts);
+            let image = SixelImage::from_rgba(black_box(rgba.clone()), width, height);
+            let result = image.encode_with(&opts);
             assert!(result.is_ok());
             result
         })
@@ -54,7 +55,8 @@ fn bench_encode_beelitz(c: &mut Criterion) {
 
     c.bench_function("encode_beelitz_default", |b| {
         b.iter(|| {
-            let result = sixel_encode(black_box(&rgba), width, height, &opts);
+            let image = SixelImage::from_rgba(black_box(rgba.clone()), width, height);
+            let result = image.encode_with(&opts);
             assert!(result.is_ok());
             result
         })
@@ -74,7 +76,8 @@ fn bench_quantizer_wu(c: &mut Criterion) {
 
     c.bench_function("quantizer_wu_256colors", |b| {
         b.iter(|| {
-            let result = sixel_encode(black_box(&rgba), width, height, &opts);
+            let image = SixelImage::from_rgba(black_box(rgba.clone()), width, height);
+            let result = image.encode_with(&opts);
             assert!(result.is_ok());
             result
         })
@@ -93,7 +96,8 @@ fn bench_quantizer_kmeans(c: &mut Criterion) {
 
     c.bench_function("quantizer_kmeans_256colors", |b| {
         b.iter(|| {
-            let result = sixel_encode(black_box(&rgba), width, height, &opts);
+            let image = SixelImage::from_rgba(black_box(rgba.clone()), width, height);
+            let result = image.encode_with(&opts);
             assert!(result.is_ok());
             result
         })
@@ -113,7 +117,8 @@ fn bench_colors_256(c: &mut Criterion) {
 
     c.bench_function("colors_256", |b| {
         b.iter(|| {
-            let result = sixel_encode(black_box(&rgba), width, height, &opts);
+            let image = SixelImage::from_rgba(black_box(rgba.clone()), width, height);
+            let result = image.encode_with(&opts);
             assert!(result.is_ok());
             result
         })
@@ -132,7 +137,8 @@ fn bench_colors_16(c: &mut Criterion) {
 
     c.bench_function("colors_16", |b| {
         b.iter(|| {
-            let result = sixel_encode(black_box(&rgba), width, height, &opts);
+            let image = SixelImage::from_rgba(black_box(rgba.clone()), width, height);
+            let result = image.encode_with(&opts);
             assert!(result.is_ok());
             result
         })
@@ -151,7 +157,8 @@ fn bench_colors_2(c: &mut Criterion) {
 
     c.bench_function("colors_2", |b| {
         b.iter(|| {
-            let result = sixel_encode(black_box(&rgba), width, height, &opts);
+            let image = SixelImage::from_rgba(black_box(rgba.clone()), width, height);
+            let result = image.encode_with(&opts);
             assert!(result.is_ok());
             result
         })
@@ -171,7 +178,8 @@ fn bench_diffusion_off(c: &mut Criterion) {
 
     c.bench_function("diffusion_off", |b| {
         b.iter(|| {
-            let result = sixel_encode(black_box(&rgba), width, height, &opts);
+            let image = SixelImage::from_rgba(black_box(rgba.clone()), width, height);
+            let result = image.encode_with(&opts);
             assert!(result.is_ok());
             result
         })
@@ -190,7 +198,8 @@ fn bench_diffusion_low(c: &mut Criterion) {
 
     c.bench_function("diffusion_low", |b| {
         b.iter(|| {
-            let result = sixel_encode(black_box(&rgba), width, height, &opts);
+            let image = SixelImage::from_rgba(black_box(rgba.clone()), width, height);
+            let result = image.encode_with(&opts);
             assert!(result.is_ok());
             result
         })
@@ -209,7 +218,8 @@ fn bench_diffusion_medium(c: &mut Criterion) {
 
     c.bench_function("diffusion_medium", |b| {
         b.iter(|| {
-            let result = sixel_encode(black_box(&rgba), width, height, &opts);
+            let image = SixelImage::from_rgba(black_box(rgba.clone()), width, height);
+            let result = image.encode_with(&opts);
             assert!(result.is_ok());
             result
         })
@@ -228,7 +238,8 @@ fn bench_diffusion_full(c: &mut Criterion) {
 
     c.bench_function("diffusion_full", |b| {
         b.iter(|| {
-            let result = sixel_encode(black_box(&rgba), width, height, &opts);
+            let image = SixelImage::from_rgba(black_box(rgba.clone()), width, height);
+            let result = image.encode_with(&opts);
             assert!(result.is_ok());
             result
         })
@@ -241,7 +252,8 @@ fn bench_encode_small(c: &mut Criterion) {
 
     c.bench_function("encode_gradient_64x64", |b| {
         b.iter(|| {
-            let result = sixel_encode(black_box(&rgba), 64, 64, &opts);
+            let image = SixelImage::from_rgba(black_box(rgba.clone()), 64, 64);
+            let result = image.encode_with(&opts);
             assert!(result.is_ok());
             result
         })
@@ -254,7 +266,8 @@ fn bench_encode_medium(c: &mut Criterion) {
 
     c.bench_function("encode_gradient_200x200", |b| {
         b.iter(|| {
-            let result = sixel_encode(black_box(&rgba), 200, 200, &opts);
+            let image = SixelImage::from_rgba(black_box(rgba.clone()), 200, 200);
+            let result = image.encode_with(&opts);
             assert!(result.is_ok());
             result
         })

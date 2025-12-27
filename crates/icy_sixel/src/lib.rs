@@ -12,21 +12,22 @@
 //! ### Encoding an image to SIXEL
 //!
 //! ```ignore
-//! use icy_sixel::{sixel_encode, EncodeOptions};
+//! use icy_sixel::SixelImage;
 //!
 //! // RGBA image data (4 bytes per pixel)
 //! let rgba = vec![255u8, 0, 0, 255, 0, 255, 0, 255]; // 2 red and green pixels
-//! let sixel = sixel_encode(&rgba, 2, 1, &EncodeOptions::default())?;
+//! let image = SixelImage::from_rgba(rgba, 2, 1);
+//! let sixel = image.encode()?;
 //! print!("{}", sixel);
 //! ```
 //!
 //! ### Decoding SIXEL to image data
 //!
 //! ```ignore
-//! use icy_sixel::sixel_decode;
+//! use icy_sixel::SixelImage;
 //!
 //! let sixel_data = b"\x1bPq#0;2;100;0;0#0~-\x1b\\";
-//! let image = sixel_decode(sixel_data)?;
+//! let image = SixelImage::decode(sixel_data)?;
 //! // image.pixels contains RGBA pixel data (4 bytes per pixel)
 //! println!("{}x{}", image.width, image.height);
 //! ```
@@ -35,11 +36,15 @@ use thiserror::Error;
 
 pub mod decoder;
 pub mod encoder;
+pub mod sixel_image;
 
-pub use decoder::{
-    sixel_decode, sixel_decode_from_dcs, BackgroundMode, DcsSettings, PixelAspectRatio, SixelImage,
-};
-pub use encoder::{sixel_encode, sixel_encode_default, EncodeOptions, QuantizeMethod};
+pub use decoder::DcsSettings;
+#[allow(deprecated)]
+pub use decoder::{sixel_decode, sixel_decode_from_dcs};
+#[allow(deprecated)]
+pub use encoder::{sixel_encode, sixel_encode_default};
+pub use encoder::{EncodeOptions, QuantizeMethod};
+pub use sixel_image::{BackgroundMode, PixelAspectRatio, SixelImage};
 
 /// Errors that can occur during SIXEL encoding or decoding.
 #[derive(Debug, Error)]

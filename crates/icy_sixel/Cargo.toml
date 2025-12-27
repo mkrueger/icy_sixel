@@ -9,7 +9,7 @@ repository = "https://github.com/mkrueger/icy_sixel"
 license = "MIT OR Apache-2.0"
 keywords = ["sixel", "terminal", "graphics", "image", "encoder"]
 categories = ["encoding", "graphics", "multimedia::images"]
-readme = "../../README.md"
+readme = "README.md"
 
 [dependencies]
 quantette = "0.5.1"

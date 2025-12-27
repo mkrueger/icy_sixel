@@ -3,9 +3,7 @@
 //! A command-line tool for converting images to/from SIXEL format.
 
 use clap::{Parser, Subcommand, ValueEnum};
-use icy_sixel::{
-    sixel_decode, sixel_encode, BackgroundMode, EncodeOptions, PixelAspectRatio, QuantizeMethod,
-};
+use icy_sixel::{BackgroundMode, EncodeOptions, PixelAspectRatio, QuantizeMethod, SixelImage};
 use image::codecs::gif::GifDecoder;
 use image::{AnimationDecoder, ImageDecoder};
 use std::fs::File;
@@ -241,11 +239,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 max_colors: colors.clamp(2, 256),
                 diffusion: diffusion.clamp(0.0, 1.0),
                 quantize_method: method.into(),
-                pixel_aspect_ratio: aspect_ratio.into(),
-                background_mode: background.into(),
             };
 
-            let sixel = sixel_encode(&pixels, width as usize, height as usize, &opts)?;
+            let image = SixelImage::try_from_rgba(pixels, width as usize, height as usize)?
+                .with_aspect_ratio(aspect_ratio.into())
+                .with_background_mode(background.into());
+            let sixel = image.encode_with(&opts)?;
 
             match output {
                 Some(path) => {
@@ -296,8 +295,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 max_colors: colors.clamp(2, 256),
                 diffusion: diffusion.clamp(0.0, 1.0),
                 quantize_method: method.into(),
-                pixel_aspect_ratio: aspect_ratio.into(),
-                background_mode: background.into(),
             };
 
             // Single frame extraction mode
@@ -324,7 +321,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let rgba = frame_data.buffer();
                 let (w, h) = rgba.dimensions();
                 let pixels = rgba.as_raw();
-                let sixel = sixel_encode(pixels, w as usize, h as usize, &opts)?;
+                let image = SixelImage::try_from_rgba(pixels.to_vec(), w as usize, h as usize)?
+                    .with_aspect_ratio(aspect_ratio.into())
+                    .with_background_mode(background.into());
+                let sixel = image.encode_with(&opts)?;
 
                 match output {
                     Some(path) => {
@@ -359,7 +359,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let rgba = frame.buffer();
                     let (w, h) = rgba.dimensions();
                     let pixels = rgba.as_raw();
-                    let sixel = sixel_encode(pixels, w as usize, h as usize, &opts)?;
+                    let image = SixelImage::try_from_rgba(pixels.to_vec(), w as usize, h as usize)?
+                        .with_aspect_ratio(aspect_ratio.into())
+                        .with_background_mode(background.into());
+                    let sixel = image.encode_with(&opts)?;
 
                     // Get frame delay (in milliseconds, apply speed multiplier)
                     let delay = frame.delay().numer_denom_ms();
@@ -445,7 +448,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             info!("Decoding ({} bytes)", sixel_data.len());
 
-            let image = sixel_decode(&sixel_data)?;
+            let image = SixelImage::decode(&sixel_data)?;
 
             let output_path = match output {
                 Some(path) => path,

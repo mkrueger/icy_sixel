@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use icy_sixel::sixel_decode;
+use icy_sixel::SixelImage;
 use std::fs;
 use std::hint::black_box;
 
@@ -25,7 +25,7 @@ const REPEATED_SIXEL: &[u8] = b"\x1bPq\
 fn bench_simple_decode(c: &mut Criterion) {
     c.bench_function("decode_simple_sixel", |b| {
         b.iter(|| {
-            let result = sixel_decode(black_box(SIMPLE_SIXEL));
+            let result = SixelImage::decode(black_box(SIMPLE_SIXEL));
             assert!(result.is_ok());
             result
         })
@@ -35,7 +35,7 @@ fn bench_simple_decode(c: &mut Criterion) {
 fn bench_complex_decode(c: &mut Criterion) {
     c.bench_function("decode_complex_sixel", |b| {
         b.iter(|| {
-            let result = sixel_decode(black_box(COMPLEX_SIXEL));
+            let result = SixelImage::decode(black_box(COMPLEX_SIXEL));
             assert!(result.is_ok());
             result
         })
@@ -45,7 +45,7 @@ fn bench_complex_decode(c: &mut Criterion) {
 fn bench_repeated_decode(c: &mut Criterion) {
     c.bench_function("decode_repeated_sixel", |b| {
         b.iter(|| {
-            let result = sixel_decode(black_box(REPEATED_SIXEL));
+            let result = SixelImage::decode(black_box(REPEATED_SIXEL));
             assert!(result.is_ok());
             result
         })
@@ -59,7 +59,7 @@ fn bench_real_files(c: &mut Criterion) {
     if let Ok(map8_data) = fs::read("tests/data/map8.six") {
         group.bench_with_input(BenchmarkId::new("decode", "map8"), &map8_data, |b, data| {
             b.iter(|| {
-                let result = sixel_decode(black_box(data));
+                let result = SixelImage::decode(black_box(data));
                 assert!(result.is_ok());
                 result
             })
@@ -73,7 +73,7 @@ fn bench_real_files(c: &mut Criterion) {
             &snake_data,
             |b, data| {
                 b.iter(|| {
-                    let result = sixel_decode(black_box(data));
+                    let result = SixelImage::decode(black_box(data));
                     assert!(result.is_ok());
                     result
                 })
@@ -102,7 +102,7 @@ fn bench_varying_sizes(c: &mut Criterion) {
             &sixel_data,
             |b, data| {
                 b.iter(|| {
-                    let result = sixel_decode(black_box(data));
+                    let result = SixelImage::decode(black_box(data));
                     assert!(result.is_ok());
                     result
                 })
@@ -140,7 +140,7 @@ fn bench_color_changes(c: &mut Criterion) {
             &sixel_data,
             |b, data| {
                 b.iter(|| {
-                    let result = sixel_decode(black_box(data));
+                    let result = SixelImage::decode(black_box(data));
                     assert!(result.is_ok());
                     result
                 })
