@@ -3,7 +3,7 @@
 //! This encoder uses the quantette library (MIT/Apache licensed) for optimal
 //! color palette generation and dithering, then encodes the result to SIXEL format.
 
-use crate::{Result, SixelError};
+use crate::{BackgroundMode, PixelAspectRatio, Result, SixelError};
 use quantette::{deps::palette::Srgb, dither::FloydSteinberg, ImageRef, PaletteSize, Pipeline};
 
 // Re-export QuantizeMethod for public API
@@ -44,6 +44,26 @@ pub struct EncodeOptions {
     ///
     /// For most use cases, Wu's method provides excellent results.
     pub quantize_method: QuantizeMethod,
+
+    /// Pixel aspect ratio (P1 parameter in DCS introducer).
+    ///
+    /// Controls how terminals interpret pixel dimensions:
+    /// - [`PixelAspectRatio::Square`]: 1:1 ratio (default, best for modern terminals)
+    /// - [`PixelAspectRatio::Ratio2To1`]: 2:1 ratio (VT240/VT340 native)
+    ///
+    /// Most modern terminals ignore this and always use square pixels.
+    /// Use `PixelAspectRatio::Square` for best compatibility.
+    pub pixel_aspect_ratio: PixelAspectRatio,
+
+    /// Background color mode (P2 parameter in DCS introducer).
+    ///
+    /// Controls how undrawn pixels are handled:
+    /// - [`BackgroundMode::Transparent`]: Undrawn pixels keep their current color (default)
+    /// - [`BackgroundMode::Opaque`]: Undrawn pixels are set to background color
+    ///
+    /// Use `Transparent` for images with alpha channel or when overlaying on terminal content.
+    /// Use `Opaque` when you want a solid background rectangle.
+    pub background_mode: BackgroundMode,
 }
 
 impl Default for EncodeOptions {
@@ -52,6 +72,8 @@ impl Default for EncodeOptions {
             max_colors: 256,
             diffusion: FloydSteinberg::DEFAULT_ERROR_DIFFUSION,
             quantize_method: QuantizeMethod::Wu,
+            pixel_aspect_ratio: PixelAspectRatio::Square,
+            background_mode: BackgroundMode::Transparent,
         }
     }
 }
@@ -148,7 +170,15 @@ pub fn sixel_encode(
     let indices: Vec<u8> = indexed_image.indices().to_vec();
 
     // Encode to SIXEL with transparency support
-    encode_indexed_to_sixel(&palette, &indices, &opacity_mask, width, height)
+    encode_indexed_to_sixel(
+        &palette,
+        &indices,
+        &opacity_mask,
+        width,
+        height,
+        opts.pixel_aspect_ratio,
+        opts.background_mode,
+    )
 }
 
 /// Encode RGBA with default options.
@@ -164,12 +194,18 @@ fn encode_indexed_to_sixel(
     opacity_mask: &[bool],
     width: usize,
     height: usize,
+    aspect_ratio: PixelAspectRatio,
+    background_mode: BackgroundMode,
 ) -> Result<String> {
     let mut out = String::new();
 
     // DCS introducer for SIXEL: ESC P p1 ; p2 ; p3 q
-    // p1=9 (treat sixels as square pixels), p2=1 (transparent pixels stay transparent), p3=0 (grid size default)
-    out.push_str("\x1bP9;1;0q");
+    // p1=aspect ratio, p2=background mode, p3=0 (grid size default)
+    out.push_str("\x1bP");
+    write_number(&mut out, aspect_ratio.to_p1_value() as usize);
+    out.push(';');
+    write_number(&mut out, background_mode.to_p2_value() as usize);
+    out.push_str(";0q");
 
     // Define palette in RGB percent (0-100)
     for (i, c) in palette.iter().enumerate() {

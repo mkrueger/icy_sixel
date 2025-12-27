@@ -9,40 +9,133 @@ use core::arch::x86_64::{__m128i, _mm_loadu_si128, _mm_storeu_si128};
 #[cfg(target_arch = "x86")]
 use core::arch::x86::{__m128i, _mm_loadu_si128, _mm_storeu_si128};
 
-/// Pixel aspect ratio from SIXEL DCS parameters.
+/// Background color mode for SIXEL (P2 parameter).
+///
+/// Controls how the terminal handles pixels that are not explicitly drawn.
+/// This affects both encoding and decoding of SIXEL images.
+///
+/// The P2 parameter in the DCS introducer:
+/// - P2 = 0 or 2: Opaque - undrawn pixels are set to background color
+/// - P2 = 1: Transparent - undrawn pixels keep their current color
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BackgroundMode {
+    /// Undrawn pixels are set to the terminal's background color (P2=0 or 2).
+    /// This fills the entire image rectangle with the background color first.
+    Opaque,
+    /// Undrawn pixels remain at their current color (P2=1).
+    /// This allows transparency when drawing over existing content.
+    #[default]
+    Transparent,
+}
+
+impl BackgroundMode {
+    /// Creates a BackgroundMode from a P2 parameter value.
+    pub fn from_p2(p2: u16) -> Self {
+        match p2 {
+            1 => Self::Transparent,
+            _ => Self::Opaque, // 0, 2, or any other value
+        }
+    }
+
+    /// Returns the P2 parameter value for the DCS introducer.
+    pub fn to_p2_value(self) -> u8 {
+        match self {
+            Self::Opaque => 0,
+            Self::Transparent => 1,
+        }
+    }
+
+    /// Returns true if this mode represents transparent background.
+    #[inline]
+    pub fn is_transparent(self) -> bool {
+        matches!(self, Self::Transparent)
+    }
+}
+
+/// Pixel aspect ratio from SIXEL DCS parameters (P1 parameter).
 ///
 /// SIXEL images can specify a pixel aspect ratio that indicates how pixels
 /// should be displayed. This is a historical feature from when terminals had
 /// non-square pixels. Most modern terminals display square pixels and ignore
 /// this setting, but the information is preserved for applications that need it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PixelAspectRatio {
-    /// Pixel Aspect Numerator (horizontal component)
-    pub pan: u16,
-    /// Pixel Aspect Denominator (vertical component)  
-    pub pad: u16,
+///
+/// The P1 parameter in the DCS introducer maps to these ratios (vertical:horizontal):
+/// - P1 = 0, 1: 5:1 - very tall pixels
+/// - P1 = 2: 3:1 - tall pixels
+/// - P1 = 3, 4, 5, 6: 2:1 - moderately tall pixels
+/// - P1 = 7, 8, 9: 1:1 - square pixels (recommended for modern terminals)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PixelAspectRatio {
+    /// 5:1 aspect ratio (vertical:horizontal) - very tall pixels (P1=0,1)
+    Ratio5To1,
+    /// 3:1 aspect ratio - tall pixels (P1=2)
+    Ratio3To1,
+    /// 2:1 aspect ratio - moderately tall pixels (P1=3,4,5,6)
+    Ratio2To1,
+    /// 1:1 aspect ratio - square pixels (P1=7,8,9, default for modern terminals)
+    #[default]
+    Square,
 }
 
 impl PixelAspectRatio {
+    /// Creates a PixelAspectRatio from a P1 parameter value.
+    ///
+    /// Maps the DCS P1 parameter to the corresponding aspect ratio.
+    pub fn from_p1(p1: u16) -> Self {
+        match p1 {
+            0 | 1 => Self::Ratio5To1,
+            2 => Self::Ratio3To1,
+            3 | 4 | 5 | 6 => Self::Ratio2To1,
+            7 | 8 | 9 => Self::Square,
+            _ => Self::Square,
+        }
+    }
+
+    /// Returns the P1 parameter value for the DCS introducer.
+    pub fn to_p1_value(self) -> u8 {
+        match self {
+            Self::Ratio5To1 => 0,
+            Self::Ratio3To1 => 2,
+            Self::Ratio2To1 => 3,
+            Self::Square => 9,
+        }
+    }
+
+    /// Returns the Pixel Aspect Numerator (horizontal component).
+    #[inline]
+    pub fn pan(self) -> u16 {
+        match self {
+            Self::Ratio5To1 => 1,
+            Self::Ratio3To1 => 1,
+            Self::Ratio2To1 => 1,
+            Self::Square => 1,
+        }
+    }
+
+    /// Returns the Pixel Aspect Denominator (vertical component).
+    #[inline]
+    pub fn pad(self) -> u16 {
+        match self {
+            Self::Ratio5To1 => 5,
+            Self::Ratio3To1 => 3,
+            Self::Ratio2To1 => 2,
+            Self::Square => 1,
+        }
+    }
+
     /// Returns the aspect ratio as a floating point value (pan/pad).
     /// Values > 1.0 mean pixels are wider than tall.
     /// Values < 1.0 mean pixels are taller than wide.
     /// Value of 1.0 means square pixels.
     #[inline]
-    pub fn as_f32(&self) -> f32 {
-        self.pan as f32 / self.pad as f32
+    pub fn as_f32(self) -> f32 {
+        self.pan() as f32 / self.pad() as f32
     }
 
     /// Returns true if the aspect ratio represents square pixels.
     #[inline]
-    pub fn is_square(&self) -> bool {
-        self.pan == self.pad
-    }
-}
-
-impl Default for PixelAspectRatio {
-    fn default() -> Self {
-        Self { pan: 1, pad: 1 } // Square pixels
+    pub fn is_square(self) -> bool {
+        matches!(self, Self::Square)
     }
 }
 
@@ -60,8 +153,8 @@ pub struct SixelImage {
     pub height: usize,
     /// Pixel aspect ratio from DCS parameters
     pub aspect_ratio: PixelAspectRatio,
-    /// Whether the image uses transparency (P2=1)
-    pub has_transparency: bool,
+    /// Background mode from DCS parameters (P2)
+    pub background_mode: BackgroundMode,
 }
 
 impl SixelImage {
@@ -72,15 +165,15 @@ impl SixelImage {
     pub fn corrected_dimensions(&self) -> (usize, usize) {
         if self.aspect_ratio.is_square() {
             (self.width, self.height)
-        } else if self.aspect_ratio.pan > self.aspect_ratio.pad {
+        } else if self.aspect_ratio.pan() > self.aspect_ratio.pad() {
             // Wider pixels: stretch horizontally
             let new_width =
-                (self.width * self.aspect_ratio.pan as usize) / self.aspect_ratio.pad as usize;
+                (self.width * self.aspect_ratio.pan() as usize) / self.aspect_ratio.pad() as usize;
             (new_width, self.height)
         } else {
             // Taller pixels: stretch vertically
             let new_height =
-                (self.height * self.aspect_ratio.pad as usize) / self.aspect_ratio.pan as usize;
+                (self.height * self.aspect_ratio.pad() as usize) / self.aspect_ratio.pan() as usize;
             (self.width, new_height)
         }
     }
@@ -221,7 +314,7 @@ impl SixelImage {
 /// let image = sixel_decode(sixel_data)?;
 ///
 /// println!("Image: {}x{}", image.width, image.height);
-/// println!("Aspect ratio: {}:{}", image.aspect_ratio.pan, image.aspect_ratio.pad);
+/// println!("Aspect ratio: {}:{}", image.aspect_ratio.pan(), image.aspect_ratio.pad());
 ///
 /// // Access pixels (RGBA format, 4 bytes per pixel)
 /// let first_pixel = &image.pixels[0..4];
@@ -241,43 +334,24 @@ pub fn sixel_decode_from_dcs(payload: &[u8], settings: DcsSettings) -> Result<Si
     decoder.process(payload)?;
     let (pixels, width, height) = decoder.finalize()?;
 
-    // Calculate aspect ratio from settings
-    let mut pan = 2usize;
-    let mut pad = 1usize;
+    // Calculate aspect ratio from P1 parameter
+    let aspect_ratio = settings
+        .aspect_ratio
+        .map(PixelAspectRatio::from_p1)
+        .unwrap_or_default();
 
-    if let Some(ar) = settings.aspect_ratio {
-        pad = match ar {
-            0 | 1 => 2,
-            2 => 5,
-            3 | 4 => 4,
-            5 | 6 => 3,
-            7 | 8 => 2,
-            9 => 1,
-            _ => 1,
-        };
-    }
-
-    if let Some(mut grid) = settings.grid_size {
-        if grid == 0 {
-            grid = 10;
-        }
-        pan = (pan * grid as usize).max(1) / 10;
-        pad = (pad * grid as usize).max(1) / 10;
-        pan = pan.max(1);
-        pad = pad.max(1);
-    }
-
-    let has_transparency = settings.zero_color == Some(1);
+    // Calculate background mode from P2 parameter
+    let background_mode = settings
+        .zero_color
+        .map(BackgroundMode::from_p2)
+        .unwrap_or_default();
 
     Ok(SixelImage {
         pixels,
         width,
         height,
-        aspect_ratio: PixelAspectRatio {
-            pan: pan as u16,
-            pad: pad as u16,
-        },
-        has_transparency,
+        aspect_ratio,
+        background_mode,
     })
 }
 
