@@ -148,8 +148,7 @@ pub fn sixel_encode(
             .output_srgb8_indexed_image()
     } else {
         // Use Floyd-Steinberg dithering with specified diffusion strength
-        let ditherer =
-            FloydSteinberg::with_error_diffusion(diffusion).unwrap_or_else(FloydSteinberg::new);
+        let ditherer = FloydSteinberg::with_error_diffusion(diffusion).unwrap_or_default();
         pipeline
             .ditherer(ditherer)
             .input_image(image)

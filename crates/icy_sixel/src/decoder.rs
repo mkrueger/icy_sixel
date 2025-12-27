@@ -85,8 +85,8 @@ impl PixelAspectRatio {
         match p1 {
             0 | 1 => Self::Ratio5To1,
             2 => Self::Ratio3To1,
-            3 | 4 | 5 | 6 => Self::Ratio2To1,
-            7 | 8 | 9 => Self::Square,
+            3..=6 => Self::Ratio2To1,
+            7..=9 => Self::Square,
             _ => Self::Square,
         }
     }

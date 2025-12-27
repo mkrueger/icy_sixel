@@ -25,7 +25,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-icy_sixel = "0.4"
+icy_sixel = "0.5"
 ```
 
 ## Usage
@@ -74,65 +74,6 @@ let image = sixel_decode(sixel_data)?;
 // image.width and image.height contain dimensions
 ```
 
-## CLI Tool
-
-The crate includes a command-line tool for encoding, decoding, and animating:
-
-```bash
-# Install the CLI
-cargo install icy_sixel-cli
-
-# Encode a PNG to SIXEL (outputs to stdout by default)
-sixel encode image.png
-
-# Encode with custom settings
-sixel encode image.png -o output.six --colors 64 --diffusion 0.5 --method kmeans
-
-# Set pixel aspect ratio and background mode
-sixel encode image.png --aspect-ratio square --background transparent
-
-# Read from stdin
-cat image.png | sixel encode -o output.six
-
-# Decode SIXEL to PNG
-sixel decode image.six -o output.png
-
-# Decode from stdin
-cat image.six | sixel decode -o output.png
-
-# Play animated GIF in terminal
-sixel animate animation.gif
-
-# Animate with custom speed and loop count
-sixel animate animation.gif --speed 2.0 --loops 3
-
-# Extract a single frame from GIF
-sixel animate animation.gif --frame 5 -o frame5.six
-
-# Save animation to file (all frames with cursor sequences)
-sixel animate animation.gif -o animation.six
-
-# Quiet mode (suppress informational messages)
-sixel -q encode image.png
-```
-
-### CLI Options
-
-**Global:**
-- `-q, --quiet` - Suppress informational messages
-
-**Encode/Animate:**
-- `-c, --colors <N>` - Maximum colors (2-256, default: 256)
-- `-d, --diffusion <F>` - Dithering strength (0.0-1.0, default: 0.875)
-- `-m, --method <METHOD>` - Quantizer: `wu` (default) or `kmeans`
-- `-a, --aspect-ratio <RATIO>` - Pixel aspect: `square`, `ratio2to1`, `ratio3to1`, `ratio5to1`
-- `-b, --background <MODE>` - Background: `transparent` or `opaque`
-
-**Animate only:**
-- `-s, --speed <F>` - Speed multiplier (default: 1.0)
-- `-l, --loops <N>` - Loop count (0=GIF default, -1=infinite)
-- `-f, --frame <N>` - Extract single frame (0-indexed)
-
 ## Architecture
 
 ### Encoder
@@ -154,29 +95,29 @@ The decoder is a clean-room implementation derived from the SIXEL specification:
 
 Original image for reference (596×936 pixels, 879 KB PNG):
 
-![Original](crates/icy_sixel/tests/data/beelitz_heilstätten.png)
+![Original](tests/data/beelitz_heilstätten.png)
 
 ### Color Palette Comparison (Wu quantizer, full diffusion)
 
 | Colors | SIXEL Size | Result |
 |--------|------------|--------|
-| 256 | 1.1 MB | ![256 colors](assets/wu/256colors_diffusion_full.png) |
-| 16 | 440 KB | ![16 colors](assets/wu/16colors_diffusion_full.png) |
-| 2 | 105 KB | ![2 colors](assets/wu/2colors_diffusion_full.png) |
+| 256 | 1.1 MB | ![256 colors](../../assets/wu/256colors_diffusion_full.png) |
+| 16 | 440 KB | ![16 colors](../../assets/wu/16colors_diffusion_full.png) |
+| 2 | 105 KB | ![2 colors](../../assets/wu/2colors_diffusion_full.png) |
 
 ### Dithering Comparison (Wu quantizer, 16 colors)
 
 | Diffusion | SIXEL Size | Result |
 |-----------|------------|--------|
-| Off (0.0) | 420 KB | ![No diffusion](assets/wu/16colors_diffusion_off.png) |
-| Full (0.875) | 440 KB | ![Full diffusion](assets/wu/16colors_diffusion_full.png) |
+| Off (0.0) | 420 KB | ![No diffusion](../../assets/wu/16colors_diffusion_off.png) |
+| Full (0.875) | 440 KB | ![Full diffusion](../../assets/wu/16colors_diffusion_full.png) |
 
 ### Quantizer Comparison (256 colors, full diffusion)
 
 | Method | SIXEL Size | Result |
 |--------|------------|--------|
-| Wu | 1.1 MB | ![Wu](assets/wu/256colors_diffusion_full.png) |
-| K-means | 1.3 MB | ![K-means](assets/kmeans/256colors_diffusion_full.png) |
+| Wu | 1.1 MB | ![Wu](../../assets/wu/256colors_diffusion_full.png) |
+| K-means | 1.3 MB | ![K-means](../../assets/kmeans/256colors_diffusion_full.png) |
 
 ### Encoded SIXEL File Sizes
 

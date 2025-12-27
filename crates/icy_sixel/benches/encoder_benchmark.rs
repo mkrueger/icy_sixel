@@ -69,6 +69,7 @@ fn bench_quantizer_wu(c: &mut Criterion) {
         max_colors: 256,
         diffusion: 0.875,
         quantize_method: QuantizeMethod::Wu,
+        ..Default::default()
     };
 
     c.bench_function("quantizer_wu_256colors", |b| {
@@ -87,6 +88,7 @@ fn bench_quantizer_kmeans(c: &mut Criterion) {
         max_colors: 256,
         diffusion: 0.875,
         quantize_method: QuantizeMethod::kmeans(),
+        ..Default::default()
     };
 
     c.bench_function("quantizer_kmeans_256colors", |b| {
@@ -106,6 +108,7 @@ fn bench_colors_256(c: &mut Criterion) {
         max_colors: 256,
         diffusion: 0.875,
         quantize_method: QuantizeMethod::Wu,
+        ..Default::default()
     };
 
     c.bench_function("colors_256", |b| {
@@ -124,6 +127,7 @@ fn bench_colors_16(c: &mut Criterion) {
         max_colors: 16,
         diffusion: 0.875,
         quantize_method: QuantizeMethod::Wu,
+        ..Default::default()
     };
 
     c.bench_function("colors_16", |b| {
@@ -142,6 +146,7 @@ fn bench_colors_2(c: &mut Criterion) {
         max_colors: 2,
         diffusion: 0.875,
         quantize_method: QuantizeMethod::Wu,
+        ..Default::default()
     };
 
     c.bench_function("colors_2", |b| {
@@ -161,6 +166,7 @@ fn bench_diffusion_off(c: &mut Criterion) {
         max_colors: 256,
         diffusion: 0.0,
         quantize_method: QuantizeMethod::Wu,
+        ..Default::default()
     };
 
     c.bench_function("diffusion_off", |b| {
@@ -179,6 +185,7 @@ fn bench_diffusion_low(c: &mut Criterion) {
         max_colors: 256,
         diffusion: 0.3,
         quantize_method: QuantizeMethod::Wu,
+        ..Default::default()
     };
 
     c.bench_function("diffusion_low", |b| {
@@ -197,6 +204,7 @@ fn bench_diffusion_medium(c: &mut Criterion) {
         max_colors: 256,
         diffusion: 0.5,
         quantize_method: QuantizeMethod::Wu,
+        ..Default::default()
     };
 
     c.bench_function("diffusion_medium", |b| {
@@ -215,6 +223,7 @@ fn bench_diffusion_full(c: &mut Criterion) {
         max_colors: 256,
         diffusion: 0.875,
         quantize_method: QuantizeMethod::Wu,
+        ..Default::default()
     };
 
     c.bench_function("diffusion_full", |b| {

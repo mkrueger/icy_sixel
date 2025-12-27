@@ -399,11 +399,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
             } else {
                 // Terminal playback mode
-                // Determine loop count
-                let loop_count = if loops == -1 {
-                    usize::MAX // Infinite
-                } else if loops == 0 {
-                    usize::MAX // Default to infinite for terminal
+                // Determine loop count (-1 or 0 means infinite)
+                let loop_count = if loops <= 0 {
+                    usize::MAX
                 } else {
                     loops as usize
                 };
