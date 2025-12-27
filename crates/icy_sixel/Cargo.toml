@@ -1,12 +1,12 @@
 [package]
 name = "icy_sixel"
-version = "0.4.3"
+version = "0.5.0"
 edition = "2021"
 authors = ["Mike Krüger <mkrueger@posteo.de>"]
 description = "A 100% Rust SIXEL encoder and decoder library with high-quality color quantization"
 homepage = "https://github.com/mkrueger/icy_sixel"
 repository = "https://github.com/mkrueger/icy_sixel"
-license = "Apache-2.0"
+license = "MIT OR Apache-2.0"
 keywords = ["sixel", "terminal", "graphics", "image", "encoder"]
 categories = ["encoding", "graphics", "multimedia::images"]
 readme = "../../README.md"
