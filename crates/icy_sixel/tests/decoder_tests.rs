@@ -432,7 +432,7 @@ fn test_roundtrip_test_page_png() {
 
     assert!(!sixel.is_empty(), "SIXEL output should not be empty");
     assert!(
-        sixel.starts_with("\x1bPq"),
+        sixel.starts_with("\x1bP9;1;0q"),
         "SIXEL should start with DCS introducer"
     );
     assert!(
@@ -602,7 +602,7 @@ fn test_encode_beelitz_heilstaetten_png() {
 
     assert!(!sixel.is_empty(), "SIXEL output should not be empty");
     assert!(
-        sixel.starts_with("\x1bPq"),
+        sixel.starts_with("\x1bP9;1;0q"),
         "SIXEL should start with DCS introducer"
     );
     assert!(

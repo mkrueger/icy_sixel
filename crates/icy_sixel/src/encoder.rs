@@ -94,9 +94,6 @@ pub fn sixel_encode(
         });
     }
 
-    // Check if image has any transparency
-    let has_transparency = rgba.chunks_exact(4).any(|c| c[3] < 128);
-
     // Create transparency mask (true = opaque, false = transparent)
     let opacity_mask: Vec<bool> = rgba.chunks_exact(4).map(|c| c[3] >= 128).collect();
 
@@ -151,14 +148,7 @@ pub fn sixel_encode(
     let indices: Vec<u8> = indexed_image.indices().to_vec();
 
     // Encode to SIXEL with transparency support
-    encode_indexed_to_sixel(
-        &palette,
-        &indices,
-        &opacity_mask,
-        width,
-        height,
-        has_transparency,
-    )
+    encode_indexed_to_sixel(&palette, &indices, &opacity_mask, width, height)
 }
 
 /// Encode RGBA with default options.
@@ -174,18 +164,12 @@ fn encode_indexed_to_sixel(
     opacity_mask: &[bool],
     width: usize,
     height: usize,
-    has_transparency: bool,
 ) -> Result<String> {
     let mut out = String::new();
 
     // DCS introducer for SIXEL: ESC P p1 ; p2 ; p3 q
-    // p1=0 (aspect ratio auto), p2=1 (transparent pixels stay transparent), p3=0 (grid size default)
-    out.push('\x1b');
-    out.push('P');
-    if has_transparency {
-        out.push_str("0;1;0"); // P2=1 means transparent pixels remain unchanged
-    }
-    out.push('q');
+    // p1=9 (treat sixels as square pixels), p2=1 (transparent pixels stay transparent), p3=0 (grid size default)
+    out.push_str("\x1bP9;1;0q");
 
     // Define palette in RGB percent (0-100)
     for (i, c) in palette.iter().enumerate() {
@@ -329,7 +313,7 @@ mod tests {
         let result = sixel_encode(&rgba, 1, 1, &EncodeOptions::default());
         assert!(result.is_ok());
         let sixel = result.unwrap();
-        assert!(sixel.starts_with("\x1bPq"));
+        assert!(sixel.starts_with("\x1bP9;1;0q"));
         assert!(sixel.ends_with("\x1b\\"));
     }
 
@@ -343,6 +327,19 @@ mod tests {
         ];
         let result = sixel_encode(&rgba, 2, 2, &EncodeOptions::default());
         assert!(result.is_ok());
+    }
+
+    //This test is a compatibility test, the P1 value needs to be 7-9 in order to have square pixels. If it is set to a different value
+    //like 0 (default) then most terminals will do things correctly but the Windows Terminal will default to a non-square sixel making the
+    //image print out with an incorrect aspect ratio.
+    #[test]
+    fn test_encode_is_set_to_square_pixels() {
+        let rgba = vec![
+            255, 0, 0, 255, // red
+            0, 0, 255, 255, // blue
+        ];
+        let sixel = sixel_encode(&rgba, 2, 1, &EncodeOptions::default()).unwrap();
+        assert!(sixel.contains("\x1bP9;"));
     }
 
     #[test]
