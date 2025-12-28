@@ -39,8 +39,7 @@ fn encode_to_file_and_decode_to_png_roundtrips_dimensions() {
 
     // SIXEL is encoded in 6-pixel-high bands; using a 1x6 image avoids ambiguity
     // around how decoders represent partial bands.
-    let img =
-        image::RgbaImage::from_raw(1, 6, [0u8, 0, 255, 255].repeat(6)).expect("create image");
+    let img = image::RgbaImage::from_raw(1, 6, [0u8, 0, 255, 255].repeat(6)).expect("create image");
     img.save(&input_path).expect("write png");
 
     sixel_cmd()
