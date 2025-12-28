@@ -10,8 +10,7 @@ fn load_test_page_png() -> (Vec<u8>, usize, usize) {
 }
 
 fn load_beelitz_png() -> (Vec<u8>, usize, usize) {
-    let img = image::open("tests/data/beelitz_heilstätten.png")
-        .expect("Failed to load beelitz_heilstätten.png");
+    let img = image::open("tests/data/beelitz_heilstätten.png").expect("Failed to load beelitz_heilstätten.png");
     let rgba_img = img.to_rgba8();
     let (width, height) = rgba_img.dimensions();
     (rgba_img.into_raw(), width as usize, height as usize)

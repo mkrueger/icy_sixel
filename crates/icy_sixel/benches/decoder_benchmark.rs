@@ -68,17 +68,13 @@ fn bench_real_files(c: &mut Criterion) {
 
     // Test with snake.six if it exists
     if let Ok(snake_data) = fs::read("tests/data/snake.six") {
-        group.bench_with_input(
-            BenchmarkId::new("decode", "snake"),
-            &snake_data,
-            |b, data| {
-                b.iter(|| {
-                    let result = SixelImage::decode(black_box(data));
-                    assert!(result.is_ok());
-                    result
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("decode", "snake"), &snake_data, |b, data| {
+            b.iter(|| {
+                let result = SixelImage::decode(black_box(data));
+                assert!(result.is_ok());
+                result
+            })
+        });
     }
 
     group.finish();
@@ -97,17 +93,13 @@ fn bench_varying_sizes(c: &mut Criterion) {
         }
         sixel_data.extend_from_slice(b"\x1b\\");
 
-        group.bench_with_input(
-            BenchmarkId::from_parameter(format!("{}_bands", size)),
-            &sixel_data,
-            |b, data| {
-                b.iter(|| {
-                    let result = SixelImage::decode(black_box(data));
-                    assert!(result.is_ok());
-                    result
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(format!("{}_bands", size)), &sixel_data, |b, data| {
+            b.iter(|| {
+                let result = SixelImage::decode(black_box(data));
+                assert!(result.is_ok());
+                result
+            })
+        });
     }
 
     group.finish();
@@ -135,17 +127,13 @@ fn bench_color_changes(c: &mut Criterion) {
 
         sixel_data.extend_from_slice(b"\x1b\\");
 
-        group.bench_with_input(
-            BenchmarkId::from_parameter(format!("{}_colors", num_colors)),
-            &sixel_data,
-            |b, data| {
-                b.iter(|| {
-                    let result = SixelImage::decode(black_box(data));
-                    assert!(result.is_ok());
-                    result
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(format!("{}_colors", num_colors)), &sixel_data, |b, data| {
+            b.iter(|| {
+                let result = SixelImage::decode(black_box(data));
+                assert!(result.is_ok());
+                result
+            })
+        });
     }
 
     group.finish();

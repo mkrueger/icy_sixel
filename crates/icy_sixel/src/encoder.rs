@@ -78,20 +78,8 @@ impl Default for EncodeOptions {
 /// println!("{}", sixel);
 /// ```
 #[must_use = "this returns the encoded SIXEL string"]
-pub fn sixel_encode(
-    rgba: &[u8],
-    width: usize,
-    height: usize,
-    opts: &EncodeOptions,
-) -> Result<String> {
-    sixel_encode_impl(
-        rgba,
-        width,
-        height,
-        opts,
-        PixelAspectRatio::default(),
-        BackgroundMode::default(),
-    )
+pub fn sixel_encode(rgba: &[u8], width: usize, height: usize, opts: &EncodeOptions) -> Result<String> {
+    sixel_encode_impl(rgba, width, height, opts, PixelAspectRatio::default(), BackgroundMode::default())
 }
 
 pub(crate) fn sixel_encode_impl(
@@ -107,49 +95,34 @@ pub(crate) fn sixel_encode_impl(
     }
     let expected = width * height * 4;
     if rgba.len() != expected {
-        return Err(SixelError::BufferSizeMismatch {
-            expected,
-            actual: rgba.len(),
-        });
+        return Err(SixelError::BufferSizeMismatch { expected, actual: rgba.len() });
     }
 
     // Create transparency mask (true = opaque, false = transparent)
     let opacity_mask: Vec<bool> = rgba.chunks_exact(4).map(|c| c[3] >= 128).collect();
 
     // Convert RGBA to Srgb<u8> for quantization (quantette uses palette crate types)
-    let rgb_pixels: Vec<Srgb<u8>> = rgba
-        .chunks_exact(4)
-        .map(|c| Srgb::new(c[0], c[1], c[2]))
-        .collect();
+    let rgb_pixels: Vec<Srgb<u8>> = rgba.chunks_exact(4).map(|c| Srgb::new(c[0], c[1], c[2])).collect();
 
     // Set up quantette pipeline
     let max_colors = opts.max_colors.clamp(2, 256) as u8;
     let palette_size = PaletteSize::try_from(max_colors).unwrap_or(PaletteSize::MAX);
 
     // Create image reference for quantette
-    let image = ImageRef::new(width as u32, height as u32, &rgb_pixels)
-        .map_err(|e| SixelError::Quantization(e.to_string()))?;
+    let image = ImageRef::new(width as u32, height as u32, &rgb_pixels).map_err(|e| SixelError::Quantization(e.to_string()))?;
 
     // Use configured quantization method with diffusion-based dithering
     let diffusion = opts.diffusion.clamp(0.0, 1.0);
-    let pipeline = Pipeline::new()
-        .palette_size(palette_size)
-        .quantize_method(opts.quantize_method.clone());
+    let pipeline = Pipeline::new().palette_size(palette_size).quantize_method(opts.quantize_method.clone());
 
     // Apply dithering based on diffusion setting
     let indexed_image = if diffusion <= 0.0 {
         // No dithering - sharp edges, may show banding
-        pipeline
-            .ditherer(None)
-            .input_image(image)
-            .output_srgb8_indexed_image()
+        pipeline.ditherer(None).input_image(image).output_srgb8_indexed_image()
     } else {
         // Use Floyd-Steinberg dithering with specified diffusion strength
         let ditherer = FloydSteinberg::with_error_diffusion(diffusion).unwrap_or_default();
-        pipeline
-            .ditherer(ditherer)
-            .input_image(image)
-            .output_srgb8_indexed_image()
+        pipeline.ditherer(ditherer).input_image(image).output_srgb8_indexed_image()
     };
 
     // Extract palette and indices
@@ -166,15 +139,7 @@ pub(crate) fn sixel_encode_impl(
     let indices: Vec<u8> = indexed_image.indices().to_vec();
 
     // Encode to SIXEL with transparency support
-    encode_indexed_to_sixel(
-        &palette,
-        &indices,
-        &opacity_mask,
-        width,
-        height,
-        pixel_aspect_ratio,
-        background_mode,
-    )
+    encode_indexed_to_sixel(&palette, &indices, &opacity_mask, width, height, pixel_aspect_ratio, background_mode)
 }
 
 /// Encode RGBA with default options.

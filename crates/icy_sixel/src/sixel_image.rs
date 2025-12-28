@@ -174,13 +174,11 @@ impl SixelImage {
             (self.width, self.height)
         } else if self.aspect_ratio.pan() > self.aspect_ratio.pad() {
             // Wider pixels: stretch horizontally
-            let new_width =
-                (self.width * self.aspect_ratio.pan() as usize) / self.aspect_ratio.pad() as usize;
+            let new_width = (self.width * self.aspect_ratio.pan() as usize) / self.aspect_ratio.pad() as usize;
             (new_width, self.height)
         } else {
             // Taller pixels: stretch vertically
-            let new_height =
-                (self.height * self.aspect_ratio.pad() as usize) / self.aspect_ratio.pan() as usize;
+            let new_height = (self.height * self.aspect_ratio.pad() as usize) / self.aspect_ratio.pan() as usize;
             (self.width, new_height)
         }
     }
@@ -220,10 +218,7 @@ impl SixelImage {
             return Err(SixelError::InvalidDimensions { width, height });
         }
 
-        let expected = width
-            .checked_mul(height)
-            .and_then(|v| v.checked_mul(4))
-            .ok_or(SixelError::IntegerOverflow)?;
+        let expected = width.checked_mul(height).and_then(|v| v.checked_mul(4)).ok_or(SixelError::IntegerOverflow)?;
 
         if pixels.len() != expected {
             return Err(SixelError::BufferSizeMismatch {
@@ -302,14 +297,7 @@ impl SixelImage {
     /// ```
     #[must_use = "this returns the encoded SIXEL string"]
     pub fn encode_with(&self, opts: &crate::encoder::EncodeOptions) -> Result<String> {
-        crate::encoder::sixel_encode_impl(
-            &self.pixels,
-            self.width,
-            self.height,
-            opts,
-            self.aspect_ratio,
-            self.background_mode,
-        )
+        crate::encoder::sixel_encode_impl(&self.pixels, self.width, self.height, opts, self.aspect_ratio, self.background_mode)
     }
 
     /// Returns the image dimensions as a tuple (width, height).

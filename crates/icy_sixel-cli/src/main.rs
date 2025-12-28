@@ -206,15 +206,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Read image data from file or stdin
             let (img, source_name) = match &input {
                 Some(path) if path.to_string_lossy() != "-" => {
-                    let img = image::open(path)
-                        .map_err(|e| format!("Failed to open '{}': {}", path.display(), e))?;
+                    let img = image::open(path).map_err(|e| format!("Failed to open '{}': {}", path.display(), e))?;
                     (img, path.display().to_string())
                 }
                 _ => {
                     let mut buf = Vec::new();
                     io::stdin().read_to_end(&mut buf)?;
-                    let img = image::load_from_memory(&buf)
-                        .map_err(|e| format!("Failed to decode image from stdin: {}", e))?;
+                    let img = image::load_from_memory(&buf).map_err(|e| format!("Failed to decode image from stdin: {}", e))?;
                     (img, "stdin".to_string())
                 }
             };
@@ -271,13 +269,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             frame,
         } => {
             // Open GIF file
-            let file = File::open(&input)
-                .map_err(|e| format!("Failed to open '{}': {}", input.display(), e))?;
+            let file = File::open(&input).map_err(|e| format!("Failed to open '{}': {}", input.display(), e))?;
             let reader = BufReader::new(file);
 
             // Decode GIF
-            let decoder = GifDecoder::new(reader)
-                .map_err(|e| format!("Failed to decode GIF '{}': {}", input.display(), e))?;
+            let decoder = GifDecoder::new(reader).map_err(|e| format!("Failed to decode GIF '{}': {}", input.display(), e))?;
 
             let (width, height) = decoder.dimensions();
 
@@ -300,12 +296,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Single frame extraction mode
             if let Some(frame_idx) = frame {
                 if frame_idx >= frames.len() {
-                    return Err(format!(
-                        "Frame {} does not exist (GIF has {} frames, 0-indexed)",
-                        frame_idx,
-                        frames.len()
-                    )
-                    .into());
+                    return Err(format!("Frame {} does not exist (GIF has {} frames, 0-indexed)", frame_idx, frames.len()).into());
                 }
 
                 info!(
@@ -394,20 +385,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 fs::write(path, &file_output)?;
-                info!(
-                    "Written {} bytes ({} frames) to '{}'",
-                    file_output.len(),
-                    encoded_frames.len(),
-                    path.display()
-                );
+                info!("Written {} bytes ({} frames) to '{}'", file_output.len(), encoded_frames.len(), path.display());
             } else {
                 // Terminal playback mode
                 // Determine loop count (-1 or 0 means infinite)
-                let loop_count = if loops <= 0 {
-                    usize::MAX
-                } else {
-                    loops as usize
-                };
+                let loop_count = if loops <= 0 { usize::MAX } else { loops as usize };
 
                 info!("Starting animation (Ctrl+C to stop)...");
 
@@ -435,8 +417,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Decode { input, output } => {
             let (sixel_data, from_stdin) = match &input {
                 Some(path) if path.to_string_lossy() != "-" => {
-                    let data = fs::read(path)
-                        .map_err(|e| format!("Failed to read '{}': {}", path.display(), e))?;
+                    let data = fs::read(path).map_err(|e| format!("Failed to read '{}': {}", path.display(), e))?;
                     (data, false)
                 }
                 _ => {
@@ -462,17 +443,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
 
-            let img =
-                image::RgbaImage::from_raw(image.width as u32, image.height as u32, image.pixels)
-                    .ok_or("Failed to create image from decoded data")?;
+            let img = image::RgbaImage::from_raw(image.width as u32, image.height as u32, image.pixels).ok_or("Failed to create image from decoded data")?;
             img.save(&output_path)?;
 
-            info!(
-                "Decoded: {}x{} pixels -> '{}'",
-                image.width,
-                image.height,
-                output_path.display()
-            );
+            info!("Decoded: {}x{} pixels -> '{}'", image.width, image.height, output_path.display());
         }
     }
 

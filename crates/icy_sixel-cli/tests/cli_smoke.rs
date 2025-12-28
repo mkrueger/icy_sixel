@@ -42,25 +42,13 @@ fn encode_to_file_and_decode_to_png_roundtrips_dimensions() {
     let img = image::RgbaImage::from_raw(1, 6, [0u8, 0, 255, 255].repeat(6)).expect("create image");
     img.save(&input_path).expect("write png");
 
-    sixel_cmd()
-        .args(["encode", "-o"])
-        .arg(&sixel_path)
-        .arg(&input_path)
-        .assert()
-        .success();
+    sixel_cmd().args(["encode", "-o"]).arg(&sixel_path).arg(&input_path).assert().success();
 
     let sixel_bytes = fs::read(&sixel_path).expect("read sixel output");
     assert!(!sixel_bytes.is_empty(), "sixel output file is empty");
 
-    sixel_cmd()
-        .args(["decode", "-o"])
-        .arg(&decoded_path)
-        .arg(&sixel_path)
-        .assert()
-        .success();
+    sixel_cmd().args(["decode", "-o"]).arg(&decoded_path).arg(&sixel_path).assert().success();
 
-    let decoded = image::open(&decoded_path)
-        .expect("load decoded png")
-        .to_rgba8();
+    let decoded = image::open(&decoded_path).expect("load decoded png").to_rgba8();
     assert_eq!(decoded.dimensions(), (1, 6));
 }
