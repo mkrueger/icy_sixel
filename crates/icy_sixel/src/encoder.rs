@@ -98,11 +98,16 @@ pub(crate) fn sixel_encode_impl(
         return Err(SixelError::BufferSizeMismatch { expected, actual: rgba.len() });
     }
 
-    // Create transparency mask (true = opaque, false = transparent)
-    let opacity_mask: Vec<bool> = rgba.chunks_exact(4).map(|c| c[3] >= 128).collect();
-
-    // Convert RGBA to Srgb<u8> for quantization (quantette uses palette crate types)
-    let rgb_pixels: Vec<Srgb<u8>> = rgba.chunks_exact(4).map(|c| Srgb::new(c[0], c[1], c[2])).collect();
+    // Single pass over the RGBA buffer building both the transparency mask
+    // (true = opaque, false = transparent) and the Srgb<u8> pixels used for
+    // quantization (quantette uses palette crate types).
+    let pixel_count = width * height;
+    let mut opacity_mask: Vec<bool> = Vec::with_capacity(pixel_count);
+    let mut rgb_pixels: Vec<Srgb<u8>> = Vec::with_capacity(pixel_count);
+    for c in rgba.chunks_exact(4) {
+        opacity_mask.push(c[3] >= 128);
+        rgb_pixels.push(Srgb::new(c[0], c[1], c[2]));
+    }
 
     // Set up quantette pipeline
     let max_colors = opts.max_colors.clamp(2, 256) as u8;
