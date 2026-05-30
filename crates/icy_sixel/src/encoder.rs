@@ -224,27 +224,45 @@ fn encode_indexed_to_sixel(
     }
 
     let bands = height.div_ceil(6);
+    let palette_len = palette.len();
+
+    // Scratch buffer holding the 6-bit sixel value for every (color, column)
+    // pair in the current band. Reused across bands; only the rows of colors
+    // actually used in a band are cleared, so this stays cheap.
+    let mut sixels = vec![0u8; palette_len * width];
+    let mut colors_used = vec![false; palette_len];
 
     for band in 0..bands {
         let y0 = band * 6;
         let y_max = usize::min(y0 + 6, height);
 
-        // Find which colors are used in this band (only for opaque pixels)
-        let mut colors_used = [false; 256];
+        // Reset only the rows touched by the previous band.
+        for (color_index, used) in colors_used.iter_mut().enumerate() {
+            if *used {
+                sixels[color_index * width..(color_index + 1) * width].fill(0);
+                *used = false;
+            }
+        }
+
+        // Single pass over the band: scatter each opaque pixel's bit into the
+        // scratch buffer keyed by its color. This replaces the previous
+        // O(colors x pixels) re-scan with a single O(pixels) pass.
         for y in y0..y_max {
+            let bit = 1u8 << (y - y0);
+            let row = y * width;
             for x in 0..width {
-                let pixel_idx = y * width + x;
-                // Only count opaque pixels
+                let pixel_idx = row + x;
                 if opacity_mask.get(pixel_idx) {
-                    let idx = indices[pixel_idx] as usize;
-                    colors_used[idx] = true;
+                    let color_index = indices[pixel_idx] as usize;
+                    sixels[color_index * width + x] |= bit;
+                    colors_used[color_index] = true;
                 }
             }
         }
 
-        // Encode each used color
-        for (color_index, &is_used) in colors_used.iter().enumerate().take(palette.len()) {
-            if !is_used {
+        // Emit each used color, run-length encoding consecutive identical sixels.
+        for color_index in 0..palette_len {
+            if !colors_used[color_index] {
                 continue; // Skip colors not used in this band
             }
 
@@ -252,40 +270,14 @@ fn encode_indexed_to_sixel(
             out.push('#');
             write_number(&mut out, color_index);
 
+            let row = &sixels[color_index * width..(color_index + 1) * width];
             let mut x = 0;
             while x < width {
-                // Build sixel value for this column and color
-                // Only set bits for opaque pixels with matching color
-                let mut bits: u8 = 0;
-                for bit in 0..6 {
-                    let y = y0 + bit;
-                    if y >= y_max {
-                        break;
-                    }
-                    let pixel_idx = y * width + x;
-                    // Only draw if pixel is opaque AND has this color
-                    if opacity_mask.get(pixel_idx) && indices[pixel_idx] as usize == color_index {
-                        bits |= 1 << bit;
-                    }
-                }
+                let bits = row[x];
 
                 // Run-length encode consecutive identical sixel values
                 let mut run_len = 1usize;
-                while x + run_len < width {
-                    let mut bits_next: u8 = 0;
-                    for bit in 0..6 {
-                        let y = y0 + bit;
-                        if y >= y_max {
-                            break;
-                        }
-                        let pixel_idx = y * width + (x + run_len);
-                        if opacity_mask.get(pixel_idx) && indices[pixel_idx] as usize == color_index {
-                            bits_next |= 1 << bit;
-                        }
-                    }
-                    if bits_next != bits {
-                        break;
-                    }
+                while x + run_len < width && row[x + run_len] == bits {
                     run_len += 1;
                 }
 
