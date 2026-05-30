@@ -17,6 +17,35 @@ struct Rgb {
     b: u8,
 }
 
+/// A compact 1-bit-per-element mask backed by `u64` words.
+///
+/// Uses 1/8 the memory of a `Vec<bool>`, which improves cache behavior in the
+/// per-color band-encoding loop that re-reads the opacity mask many times.
+struct BitMask {
+    words: Vec<u64>,
+}
+
+impl BitMask {
+    /// Create a mask with `len` bits, all cleared.
+    fn zeros(len: usize) -> Self {
+        Self {
+            words: vec![0; len.div_ceil(64)],
+        }
+    }
+
+    /// Set the bit at `index` to 1.
+    #[inline]
+    fn set(&mut self, index: usize) {
+        self.words[index >> 6] |= 1u64 << (index & 63);
+    }
+
+    /// Return whether the bit at `index` is set.
+    #[inline]
+    fn get(&self, index: usize) -> bool {
+        (self.words[index >> 6] >> (index & 63)) & 1 != 0
+    }
+}
+
 /// Options for the quantette-based SIXEL encoder.
 #[derive(Clone, Debug)]
 pub struct EncodeOptions {
@@ -99,13 +128,15 @@ pub(crate) fn sixel_encode_impl(
     }
 
     // Single pass over the RGBA buffer building both the transparency mask
-    // (true = opaque, false = transparent) and the Srgb<u8> pixels used for
-    // quantization (quantette uses palette crate types).
+    // (set bit = opaque) and the Srgb<u8> pixels used for quantization
+    // (quantette uses palette crate types).
     let pixel_count = width * height;
-    let mut opacity_mask: Vec<bool> = Vec::with_capacity(pixel_count);
+    let mut opacity_mask = BitMask::zeros(pixel_count);
     let mut rgb_pixels: Vec<Srgb<u8>> = Vec::with_capacity(pixel_count);
-    for c in rgba.chunks_exact(4) {
-        opacity_mask.push(c[3] >= 128);
+    for (i, c) in rgba.chunks_exact(4).enumerate() {
+        if c[3] >= 128 {
+            opacity_mask.set(i);
+        }
         rgb_pixels.push(Srgb::new(c[0], c[1], c[2]));
     }
 
@@ -159,7 +190,7 @@ pub fn sixel_encode_default(rgba: &[u8], width: usize, height: usize) -> Result<
 fn encode_indexed_to_sixel(
     palette: &[Rgb],
     indices: &[u8],
-    opacity_mask: &[bool],
+    opacity_mask: &BitMask,
     width: usize,
     height: usize,
     aspect_ratio: PixelAspectRatio,
@@ -204,7 +235,7 @@ fn encode_indexed_to_sixel(
             for x in 0..width {
                 let pixel_idx = y * width + x;
                 // Only count opaque pixels
-                if opacity_mask[pixel_idx] {
+                if opacity_mask.get(pixel_idx) {
                     let idx = indices[pixel_idx] as usize;
                     colors_used[idx] = true;
                 }
@@ -233,7 +264,7 @@ fn encode_indexed_to_sixel(
                     }
                     let pixel_idx = y * width + x;
                     // Only draw if pixel is opaque AND has this color
-                    if opacity_mask[pixel_idx] && indices[pixel_idx] as usize == color_index {
+                    if opacity_mask.get(pixel_idx) && indices[pixel_idx] as usize == color_index {
                         bits |= 1 << bit;
                     }
                 }
@@ -248,7 +279,7 @@ fn encode_indexed_to_sixel(
                             break;
                         }
                         let pixel_idx = y * width + (x + run_len);
-                        if opacity_mask[pixel_idx] && indices[pixel_idx] as usize == color_index {
+                        if opacity_mask.get(pixel_idx) && indices[pixel_idx] as usize == color_index {
                             bits_next |= 1 << bit;
                         }
                     }
