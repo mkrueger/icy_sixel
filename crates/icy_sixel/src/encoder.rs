@@ -206,6 +206,19 @@ fn encode_indexed_to_sixel(
     write_number(&mut out, background_mode.to_p2_value() as usize);
     out.push_str(";0q");
 
+    // Set raster attributes: " Pan ; Pad ; Ph ; Pv
+    // Pan:Pad is vertical:horizontal, so it mirrors the P1 macro parameter.
+    // Emitting this is required for terminals and multiplexers (e.g. tmux) that
+    // drop or rewrite P1 but forward the raster attributes.
+    out.push('"');
+    write_number(&mut out, aspect_ratio.pad() as usize);
+    out.push(';');
+    write_number(&mut out, aspect_ratio.pan() as usize);
+    out.push(';');
+    write_number(&mut out, width);
+    out.push(';');
+    write_number(&mut out, height);
+
     // Define palette in RGB percent (0-100)
     for (i, c) in palette.iter().enumerate() {
         let r = (c.r as u32 * 100) / 255;
@@ -341,7 +354,7 @@ mod tests {
         let result = sixel_encode(&rgba, 1, 1, &EncodeOptions::default());
         assert!(result.is_ok());
         let sixel = result.unwrap();
-        assert!(sixel.starts_with("\x1bP9;1;0q"));
+        assert!(sixel.starts_with("\x1bP9;1;0q\"1;1;1;1"));
         assert!(sixel.ends_with("\x1b\\"));
     }
 
@@ -370,6 +383,9 @@ mod tests {
         ];
         let sixel = sixel_encode(&rgba, 2, 1, &EncodeOptions::default()).unwrap();
         assert!(sixel.contains("\x1bP9;"));
+        // Raster attributes must also state a 1:1 ratio: multiplexers such as tmux
+        // rewrite P1 but pass the raster attributes through unchanged.
+        assert!(sixel.contains("\"1;1;2;1"));
     }
 
     #[test]
