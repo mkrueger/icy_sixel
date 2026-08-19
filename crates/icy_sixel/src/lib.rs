@@ -38,9 +38,9 @@ pub mod decoder;
 pub mod encoder;
 pub mod sixel_image;
 
-pub use decoder::DcsSettings;
 #[allow(deprecated)]
 pub use decoder::{sixel_decode, sixel_decode_from_dcs};
+pub use decoder::{DcsSettings, SixelDecoder};
 #[allow(deprecated)]
 pub use encoder::{sixel_encode, sixel_encode_default};
 pub use encoder::{EncodeOptions, QuantizeMethod};

@@ -14,31 +14,12 @@ use core::arch::x86::{__m128i, _mm_loadu_si128, _mm_storeu_si128};
 
 /// Internal decode function used by SixelImage::decode
 pub(crate) fn decode_sixel(data: &[u8]) -> Result<SixelImage> {
-    let parsed = AnsiPayload::parse(data)?;
-    let settings = DcsSettings::new(parsed.aspect_ratio, parsed.zero_color, parsed.grid_size);
-    let payload = strip_string_terminator(parsed.payload);
-    decode_sixel_from_dcs(payload, settings)
+    SixelDecoder::new().decode(data)
 }
 
 /// Internal decode function used by SixelImage::decode_from_dcs
 pub(crate) fn decode_sixel_from_dcs(payload: &[u8], settings: DcsSettings) -> Result<SixelImage> {
-    let mut decoder = SixelDecoder::new(settings)?;
-    decoder.process(payload)?;
-    let (pixels, width, height) = decoder.finalize()?;
-
-    // Calculate aspect ratio from P1 parameter
-    let aspect_ratio = settings.aspect_ratio.map(PixelAspectRatio::from_p1).unwrap_or_default();
-
-    // Calculate background mode from P2 parameter
-    let background_mode = settings.zero_color.map(BackgroundMode::from_p2).unwrap_or_default();
-
-    Ok(SixelImage {
-        pixels,
-        width,
-        height,
-        aspect_ratio,
-        background_mode,
-    })
+    SixelDecoder::new().decode_from_dcs(payload, settings)
 }
 
 /// Decodes a complete ANSI SIXEL sequence.
@@ -342,7 +323,58 @@ impl DcsSettings {
     }
 }
 
-struct SixelDecoder {
+/// Stateful SIXEL decoder whose color registers can be shared between images.
+#[derive(Clone, Debug)]
+pub struct SixelDecoder {
+    palette: Palette,
+}
+
+impl Default for SixelDecoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SixelDecoder {
+    /// Creates a decoder initialized with the standard SIXEL palette.
+    pub fn new() -> Self {
+        Self { palette: Palette::new() }
+    }
+
+    /// Decodes a complete ANSI DCS sequence while preserving color registers.
+    pub fn decode(&mut self, data: &[u8]) -> Result<SixelImage> {
+        let parsed = AnsiPayload::parse(data)?;
+        let settings = DcsSettings::new(parsed.aspect_ratio, parsed.zero_color, parsed.grid_size);
+        let payload = strip_string_terminator(parsed.payload);
+        self.decode_from_dcs(payload, settings)
+    }
+
+    /// Decodes one DCS payload while preserving color registers on success.
+    pub fn decode_from_dcs(&mut self, payload: &[u8], settings: DcsSettings) -> Result<SixelImage> {
+        let mut frame = FrameDecoder::new(settings, self.palette.clone())?;
+        frame.process(payload)?;
+        let (pixels, width, height, palette) = frame.finalize()?;
+
+        let aspect_ratio = settings.aspect_ratio.map(PixelAspectRatio::from_p1).unwrap_or_default();
+        let background_mode = settings.zero_color.map(BackgroundMode::from_p2).unwrap_or_default();
+        self.palette = palette;
+
+        Ok(SixelImage {
+            pixels,
+            width,
+            height,
+            aspect_ratio,
+            background_mode,
+        })
+    }
+
+    /// Restores all color registers to the standard SIXEL palette.
+    pub fn reset_palette(&mut self) {
+        self.palette = Palette::new();
+    }
+}
+
+struct FrameDecoder {
     canvas: Canvas,
     palette: Palette,
     color_index: usize,
@@ -361,9 +393,8 @@ struct SixelDecoder {
     transparent_mode: bool,
 }
 
-impl SixelDecoder {
-    fn new(settings: DcsSettings) -> Result<Self> {
-        let palette = Palette::new();
+impl FrameDecoder {
+    fn new(settings: DcsSettings, palette: Palette) -> Result<Self> {
         let background_index = 0usize;
         let repeat = 1usize;
         let current_color = palette.rgb_bytes(0);
@@ -621,7 +652,7 @@ impl SixelDecoder {
         }
     }
 
-    fn finalize(mut self) -> Result<(Vec<u8>, usize, usize)> {
+    fn finalize(mut self) -> Result<(Vec<u8>, usize, usize, Palette)> {
         let width = self.max_x + 1;
         let height = self.max_y + 1;
         let desired_width = width.max(self.target_width.max(1));
@@ -629,10 +660,11 @@ impl SixelDecoder {
         self.guard_dimensions(desired_width, desired_height)?;
         let background = self.background_rgb();
         self.canvas.ensure_visible(desired_width, desired_height, background)?;
-        Ok((self.canvas.data, self.canvas.width, self.canvas.height))
+        Ok((self.canvas.data, self.canvas.width, self.canvas.height, self.palette))
     }
 }
 
+#[derive(Clone, Debug)]
 struct Palette {
     colors: [u32; SIXEL_PALETTE_MAX],
 }

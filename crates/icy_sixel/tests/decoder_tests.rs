@@ -1,6 +1,61 @@
 use icy_sixel::*;
 
 #[test]
+fn shared_palette_survives_between_images() {
+    let mut decoder = SixelDecoder::new();
+
+    decoder.decode_from_dcs(b"#42;2;100;0;0#42~", DcsSettings::default()).unwrap();
+    let image = decoder.decode_from_dcs(b"#42~", DcsSettings::default()).unwrap();
+
+    assert_eq!(&image.pixels[..4], &[255, 0, 0, 255]);
+}
+
+#[test]
+fn decoders_do_not_share_palettes() {
+    let mut first = SixelDecoder::new();
+    let mut second = SixelDecoder::new();
+
+    first.decode_from_dcs(b"#42;2;100;0;0#42~", DcsSettings::default()).unwrap();
+    let image = second.decode_from_dcs(b"#42~", DcsSettings::default()).unwrap();
+
+    assert_ne!(&image.pixels[..4], &[255, 0, 0, 255]);
+}
+
+#[test]
+fn reset_palette_restores_defaults() {
+    let mut decoder = SixelDecoder::new();
+
+    decoder.decode_from_dcs(b"#42;2;100;0;0#42~", DcsSettings::default()).unwrap();
+    decoder.reset_palette();
+    let image = decoder.decode_from_dcs(b"#42~", DcsSettings::default()).unwrap();
+
+    assert_ne!(&image.pixels[..4], &[255, 0, 0, 255]);
+}
+
+#[test]
+fn failed_frame_does_not_mutate_shared_palette() {
+    let mut decoder = SixelDecoder::new();
+
+    decoder.decode_from_dcs(b"#42;2;100;0;0#42~", DcsSettings::default()).unwrap();
+    assert!(decoder.decode_from_dcs(b"#42;2;0;100;0!65536~", DcsSettings::default()).is_err());
+    let image = decoder.decode_from_dcs(b"#42~", DcsSettings::default()).unwrap();
+
+    assert_eq!(&image.pixels[..4], &[255, 0, 0, 255]);
+}
+
+#[test]
+fn frame_state_is_reset_between_images() {
+    let mut decoder = SixelDecoder::new();
+
+    decoder
+        .decode_from_dcs(b"\"1;1;10;20!5~", DcsSettings::default().with_background_mode(BackgroundMode::Transparent))
+        .unwrap();
+    let image = decoder.decode_from_dcs(b"~", DcsSettings::default()).unwrap();
+
+    assert_eq!((image.width, image.height), (1, 6));
+}
+
+#[test]
 fn test_decode_simple_sixel() {
     // Simple 2x2 black square
     let sixel_data = b"\x1bPq\"1;1;2;2#0;2;0;0;0#0~~\x1b\\";
