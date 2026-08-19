@@ -5,6 +5,8 @@ use crate::{
 
 const SIXEL_CELL_HEIGHT: usize = 6;
 const MAX_REPEAT: usize = 0xffff;
+/// Upper bound on decoded pixels (256 MB of RGBA data), guarding against memory exhaustion.
+const MAX_PIXELS: usize = 64 * 1024 * 1024;
 
 #[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::{__m128i, _mm_loadu_si128, _mm_storeu_si128};
@@ -356,7 +358,8 @@ impl SixelDecoder {
         let (pixels, width, height, palette) = frame.finalize()?;
 
         let aspect_ratio = settings.aspect_ratio.map(PixelAspectRatio::from_p1).unwrap_or_default();
-        let background_mode = settings.zero_color.map(BackgroundMode::from_p2).unwrap_or_default();
+        // Mirrors the decoded pixels: only P2=1 leaves undrawn pixels transparent.
+        let background_mode = BackgroundMode::from_p2(settings.zero_color.unwrap_or(0));
         self.palette = palette;
 
         Ok(SixelImage {
@@ -635,9 +638,6 @@ impl FrameDecoder {
         if width > SIXEL_WIDTH_LIMIT || height > SIXEL_HEIGHT_LIMIT {
             return Err(SixelError::InvalidData("malformed SIXEL data".to_string()));
         }
-        // Also guard against total pixel count to prevent memory exhaustion
-        // Max 256 MB of pixel data (64 million pixels * 4 bytes)
-        const MAX_PIXELS: usize = 64 * 1024 * 1024;
         if width.saturating_mul(height) > MAX_PIXELS {
             return Err(SixelError::InvalidData("image dimensions too large".to_string()));
         }
@@ -660,7 +660,8 @@ impl FrameDecoder {
         self.guard_dimensions(desired_width, desired_height)?;
         let background = self.background_rgb();
         self.canvas.ensure_visible(desired_width, desired_height, background)?;
-        Ok((self.canvas.data, self.canvas.width, self.canvas.height, self.palette))
+        let (width, height) = (self.canvas.width, self.canvas.height);
+        Ok((self.canvas.into_pixels(), width, height, self.palette))
     }
 }
 
@@ -759,13 +760,23 @@ struct Canvas {
     data: Vec<u8>,
     width: usize,
     height: usize,
+    /// Allocated row width in pixels; may exceed `width` to amortize growth.
+    stride: usize,
+    /// Allocated row count; may exceed `height` to amortize growth.
+    capacity_height: usize,
 }
 
 impl Canvas {
     fn new(background: [u8; 4]) -> Self {
         let mut data = vec![0u8; 4];
         data[..4].copy_from_slice(&background);
-        Self { data, width: 1, height: 1 }
+        Self {
+            data,
+            width: 1,
+            height: 1,
+            stride: 1,
+            capacity_height: 1,
+        }
     }
 
     fn ensure_visible(&mut self, width: usize, height: usize, background: [u8; 4]) -> Result<()> {
@@ -773,44 +784,85 @@ impl Canvas {
             return Ok(());
         }
 
-        let new_width = width.max(self.width);
-        let new_height = height.max(self.height);
+        let new_width = width.max(self.width).max(1);
+        let new_height = height.max(self.height).max(1);
 
-        // Guard against memory exhaustion - max 256 MB of pixel data
-        const MAX_PIXELS: usize = 64 * 1024 * 1024;
         if new_width.saturating_mul(new_height) > MAX_PIXELS {
             return Err(SixelError::InvalidData("image dimensions too large".to_string()));
         }
 
-        self.resize(new_width.max(1), new_height.max(1), background);
+        if new_width > self.stride || new_height > self.capacity_height {
+            self.grow_capacity(new_width, new_height);
+        }
+
+        self.expose(new_width, new_height, background);
         Ok(())
     }
 
-    fn resize(&mut self, new_width: usize, new_height: usize, background: [u8; 4]) {
-        let mut new_data = vec![0u8; new_width * new_height * 4];
+    /// Reallocates with geometric slack so repeated single-column growth stays linear overall.
+    fn grow_capacity(&mut self, new_width: usize, new_height: usize) {
+        let mut stride = self.stride.max(1);
+        while stride < new_width {
+            stride = stride.saturating_mul(2);
+        }
+        let mut capacity_height = self.capacity_height.max(1);
+        while capacity_height < new_height {
+            capacity_height = capacity_height.saturating_mul(2);
+        }
 
+        if stride.saturating_mul(capacity_height) > MAX_PIXELS {
+            stride = new_width;
+            capacity_height = new_height;
+        }
+
+        let mut data = vec![0u8; stride * capacity_height * 4];
+        let row_bytes = self.width * 4;
         for row in 0..self.height {
-            let src_start = row * self.width * 4;
-            let src_end = src_start + self.width * 4;
-            let dst_start = row * new_width * 4;
-            new_data[dst_start..dst_start + self.width * 4].copy_from_slice(&self.data[src_start..src_end]);
-            if new_width > self.width {
-                let span = &mut new_data[dst_start + self.width * 4..dst_start + new_width * 4];
-                fill_rgba_span(span, background);
+            let src = row * self.stride * 4;
+            let dst = row * stride * 4;
+            data[dst..dst + row_bytes].copy_from_slice(&self.data[src..src + row_bytes]);
+        }
+
+        self.data = data;
+        self.stride = stride;
+        self.capacity_height = capacity_height;
+    }
+
+    /// Fills the area newly uncovered by a logical resize with the background color.
+    fn expose(&mut self, new_width: usize, new_height: usize, background: [u8; 4]) {
+        if new_width > self.width {
+            let start = self.width * 4;
+            let end = new_width * 4;
+            for row in 0..self.height {
+                let base = row * self.stride * 4;
+                fill_rgba_span(&mut self.data[base + start..base + end], background);
             }
         }
 
-        if new_height > self.height {
-            for row in self.height..new_height {
-                let dst_start = row * new_width * 4;
-                let dst_end = dst_start + new_width * 4;
-                fill_rgba_span(&mut new_data[dst_start..dst_end], background);
-            }
+        for row in self.height..new_height {
+            let base = row * self.stride * 4;
+            fill_rgba_span(&mut self.data[base..base + new_width * 4], background);
         }
 
-        self.data = new_data;
         self.width = new_width;
         self.height = new_height;
+    }
+
+    /// Returns tightly packed RGBA rows, dropping any unused capacity padding.
+    fn into_pixels(mut self) -> Vec<u8> {
+        let row_bytes = self.width * 4;
+        if self.stride == self.width {
+            self.data.truncate(row_bytes * self.height);
+            return self.data;
+        }
+
+        let mut out = vec![0u8; row_bytes * self.height];
+        for row in 0..self.height {
+            let src = row * self.stride * 4;
+            let dst = row * row_bytes;
+            out[dst..dst + row_bytes].copy_from_slice(&self.data[src..src + row_bytes]);
+        }
+        out
     }
 
     #[inline]
@@ -821,7 +873,7 @@ impl Canvas {
         // Clip the span to the available width
         let available = self.width - x;
         let actual_len = len.min(available);
-        let start = (y * self.width + x) * 4;
+        let start = (y * self.stride + x) * 4;
 
         // Fast path for single pixel
         if actual_len == 1 {

@@ -56,6 +56,67 @@ fn frame_state_is_reset_between_images() {
 }
 
 #[test]
+fn unsized_growth_matches_pre_sized_decode() {
+    // Without raster attributes the canvas grows column by column; the result must be
+    // byte-identical to the pre-sized path and carry no capacity padding.
+    let width = 1500;
+    let mut unsized_data = Vec::from(*b"\x1bPq#1;2;100;0;0");
+    unsized_data.resize(unsized_data.len() + width, b'~');
+    unsized_data.extend_from_slice(b"\x1b\\");
+
+    let mut raster_data = Vec::from(*b"\x1bPq");
+    raster_data.extend_from_slice(format!("\"1;1;{};6", width).as_bytes());
+    raster_data.extend_from_slice(b"#1;2;100;0;0");
+    raster_data.resize(raster_data.len() + width, b'~');
+    raster_data.extend_from_slice(b"\x1b\\");
+
+    let grown = SixelImage::decode(&unsized_data).unwrap();
+    let pre_sized = SixelImage::decode(&raster_data).unwrap();
+
+    assert_eq!((grown.width, grown.height), (width, 6));
+    assert_eq!((grown.width, grown.height), (pre_sized.width, pre_sized.height));
+    assert_eq!(grown.pixels.len(), width * 6 * 4);
+    assert_eq!(grown.pixels, pre_sized.pixels);
+    assert!(grown.pixels.chunks_exact(4).all(|px| px == [255, 0, 0, 255]));
+}
+
+#[test]
+fn partial_rows_survive_canvas_growth() {
+    // Draw a short first band, then a much wider second band: the older, narrower rows must
+    // keep their pixels and be padded with background rather than shifted by the new stride.
+    let mut data = Vec::from(*b"\x1bPq#1;2;100;0;0#1!3~-#2;2;0;0;100#2!300~");
+    data.extend_from_slice(b"\x1b\\");
+
+    let image = SixelImage::decode(&data).unwrap();
+    assert_eq!((image.width, image.height), (300, 12));
+
+    let px = |x: usize, y: usize| &image.pixels[(y * image.width + x) * 4..(y * image.width + x) * 4 + 4];
+    assert_eq!(px(0, 0), &[255, 0, 0, 255], "first band keeps its red pixels");
+    assert_eq!(px(2, 5), &[255, 0, 0, 255], "first band spans all six rows");
+    assert_eq!(px(3, 0), &[0, 0, 0, 255], "area beyond the first band is background");
+    assert_eq!(px(299, 6), &[0, 0, 255, 255], "second band reaches the full width");
+}
+
+#[test]
+fn reported_background_mode_matches_pixels() {
+    // No P2 parameter: undrawn pixels are filled opaquely, so the metadata must say Opaque.
+    let image = SixelImage::decode(b"\x1bPq#1;2;100;0;0#1@\x1b\\").unwrap();
+    let undrawn = &image.pixels[image.width * 4..image.width * 4 + 4];
+    assert_eq!(image.background_mode, BackgroundMode::Opaque);
+    assert_eq!(undrawn[3], 255);
+
+    // P2=1 requests transparency and undrawn pixels keep alpha 0.
+    let image = SixelImage::decode(b"\x1bP0;1;0q#1;2;100;0;0#1@\x1b\\").unwrap();
+    let undrawn = &image.pixels[image.width * 4..image.width * 4 + 4];
+    assert_eq!(image.background_mode, BackgroundMode::Transparent);
+    assert_eq!(undrawn[3], 0);
+
+    // P2=2 is an opaque variant.
+    let image = SixelImage::decode(b"\x1bP0;2;0q#1;2;100;0;0#1@\x1b\\").unwrap();
+    assert_eq!(image.background_mode, BackgroundMode::Opaque);
+}
+
+#[test]
 fn test_decode_simple_sixel() {
     // Simple 2x2 black square
     let sixel_data = b"\x1bPq\"1;1;2;2#0;2;0;0;0#0~~\x1b\\";

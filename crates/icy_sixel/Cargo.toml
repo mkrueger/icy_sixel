@@ -1,6 +1,6 @@
 [package]
 name = "icy_sixel"
-version = "0.5.1"
+version = "0.6.0"
 edition = "2021"
 authors = ["Mike Krüger <mkrueger@posteo.de>"]
 description = "A 100% Rust SIXEL encoder and decoder library with high-quality color quantization"

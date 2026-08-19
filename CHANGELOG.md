@@ -5,11 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-08-19
+
+### Added
+- Stateful `SixelDecoder` API for preserving the 256 SIXEL color registers across images.
+- Transactional palette updates, independent decoder instances, and `reset_palette()` support for
+  DEC Private Mode 1070 integrations.
+- Benchmark group covering canvas growth for streams without raster attributes.
+
+### Fixed
+- Decoding a stream without raster attributes no longer reallocates the canvas for every column.
+	The canvas now grows geometrically, turning quadratic decode time into linear (an
+	8000-pixel-wide band decodes ~122x faster).
+- `SixelImage::background_mode` now reflects the decoded pixels. Without a P2 parameter the
+  decoder fills undrawn pixels opaquely but previously reported `Transparent`.
+
 ## [0.5.1] - 2026-08-09
 
 ### Fixed
 - Encoder now emits the "set raster attributes" control (`"Pan;Pad;Ph;Pv`) after the DCS
-  introducer. Multiplexers such as tmux discard the P1 macro parameter when re-emitting a
+	introducer. Multiplexers such as tmux discard the P1 macro parameter when re-emitting a
   SIXEL, which made images appear stretched vertically ([#19](https://github.com/mkrueger/icy_sixel/issues/19)).
 
 ## [0.5.0] - 2025-12-27

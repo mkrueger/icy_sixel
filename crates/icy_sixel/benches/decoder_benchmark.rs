@@ -139,6 +139,39 @@ fn bench_color_changes(c: &mut Criterion) {
     group.finish();
 }
 
+/// Streams without raster attributes force the canvas to grow one column at a time,
+/// so this contrasts them against the pre-sized path at identical pixel counts.
+fn bench_canvas_growth(c: &mut Criterion) {
+    let mut group = c.benchmark_group("canvas_growth");
+
+    fn wide_band(width: usize, raster: bool) -> Vec<u8> {
+        let mut data = Vec::new();
+        data.extend_from_slice(b"\x1bPq");
+        if raster {
+            data.extend_from_slice(format!("\"1;1;{};6", width).as_bytes());
+        }
+        data.extend_from_slice(b"#1;2;100;0;0");
+        data.resize(data.len() + width, b'~');
+        data.extend_from_slice(b"\x1b\\");
+        data
+    }
+
+    for width in [1000usize, 2000, 4000, 8000] {
+        for (label, raster) in [("unsized", false), ("raster", true)] {
+            let data = wide_band(width, raster);
+            group.bench_with_input(BenchmarkId::from_parameter(format!("{}_{}", label, width)), &data, |b, data| {
+                b.iter(|| {
+                    let result = SixelImage::decode(black_box(data));
+                    assert!(result.is_ok());
+                    result
+                })
+            });
+        }
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_simple_decode,
@@ -146,7 +179,8 @@ criterion_group!(
     bench_repeated_decode,
     bench_real_files,
     bench_varying_sizes,
-    bench_color_changes
+    bench_color_changes,
+    bench_canvas_growth
 );
 
 criterion_main!(benches);
