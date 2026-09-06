@@ -40,7 +40,9 @@ pub mod sixel_image;
 
 #[allow(deprecated)]
 pub use decoder::{sixel_decode, sixel_decode_from_dcs};
-pub use decoder::{DcsSettings, SixelDecoder};
+pub use decoder::{
+    DcsSettings, SixelDcsFeedResult, SixelDcsFeedStatus, SixelDcsStreamDecoder, SixelDecoder, SixelFeedResult, SixelFeedStatus, SixelStreamDecoder,
+};
 #[allow(deprecated)]
 pub use encoder::{sixel_encode, sixel_encode_default};
 pub use encoder::{EncodeOptions, QuantizeMethod};

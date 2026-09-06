@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Incremental SIXEL payload decoding through `SixelDecoder::begin_frame()` and `SixelStreamDecoder::feed()`/`finish()`/`abort()`.
+- Streaming sessions preserve commands across arbitrary chunks, report consumed bytes and unconsumed terminators, and commit shared palettes only on successful completion.
+- Complete DCS streaming through `SixelDecoder::begin_dcs()`, including split 7/8-bit introducers,
+	headers and ST, explicit cancellation/interruption and remainder ownership, and strict EOF validation.
+
 ### Changed
 - **Breaking:** Encoding rejects images the decoder cannot read back, instead of attempting them. Width may
 	not exceed 1,000,000, height padded to a complete six-pixel band may not exceed 1,000,000 (999,996 input

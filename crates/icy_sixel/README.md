@@ -81,6 +81,94 @@ let image = SixelImage::decode(sixel_data)?;
 // image.width and image.height contain dimensions
 ```
 
+### Incremental Payload Decoding
+
+`SixelDecoder::begin_frame()` starts a streaming session after your ANSI parser
+has recognized the DCS header and consumed `q`. Feed arbitrary byte chunks without
+buffering the complete payload:
+
+```rust
+use icy_sixel::{DcsSettings, SixelDecoder, SixelFeedStatus};
+
+let mut decoder = SixelDecoder::new();
+let mut frame = decoder.begin_frame(DcsSettings::new(Some(9), Some(1), None))?;
+let progress = frame.feed(b"#1;2;100;0;0!1")?;
+assert_eq!(progress.status, SixelFeedStatus::NeedMoreData);
+
+let tail = b"2~\x1b\\remaining terminal data";
+let progress = frame.feed(tail)?;
+assert_eq!(progress.consumed, 2);
+assert_eq!(progress.status, SixelFeedStatus::Terminated(0x1b));
+let image = frame.finish()?;
+assert_eq!(image.dimensions(), (12, 6));
+let remaining = &tail[progress.consumed..]; // Return ESC and the rest to your ANSI parser.
+```
+
+- Chunk boundaries, including empty chunks, never finish a number, command or image.
+- `feed()` reports bytes consumed from that call. CAN, SUB, ESC and all C1 controls
+    terminate the payload **without consuming the control byte**. ESC terminates immediately;
+    the outer ANSI parser handles the following `\`, even across transport chunks.
+- After termination, subsequent calls consume zero bytes and return the same status.
+- `finish()` consumes the session, returns the image and commits its palette. It also
+    accepts explicit EOF without a terminator, like the one-shot decoder. A strict caller
+    can require `Terminated` first. CAN/SUB followed by `finish()` yields the partial image.
+- `abort()` or dropping a session discards the image and palette changes, even after a
+    terminator. An error invalidates the session; neither `feed()` nor `finish()` can recover
+    it. The outer ANSI parser must discard the remainder of that failed DCS.
+- Keep the owning `SixelDecoder` for successive images with shared color registers.
+    One active session borrows it exclusively. `reset_palette()` resets those registers.
+
+The session retains a fixed-size parser state and the growing RGBA canvas, not the input
+stream. Existing canvas limits still apply; this is not constant-memory image storage.
+Progressive image previews are not part of this API. To stream the DCS framing as well,
+see `begin_dcs()` below.
+
+### Incremental Complete DCS Decoding
+
+If your input includes the DCS framing, use `SixelDecoder::begin_dcs()`. It starts
+exactly at `ESC P` or the 8-bit DCS byte `0x90` and parses one SIXEL sequence:
+
+```rust
+use icy_sixel::{SixelDecoder, SixelDcsFeedStatus};
+
+let mut decoder = SixelDecoder::new();
+let mut dcs = decoder.begin_dcs();
+assert_eq!(dcs.feed(b"\x1b")?.status, SixelDcsFeedStatus::NeedMoreData);
+assert_eq!(dcs.feed(b"P9;1q#1;2;100;0;0!12~\x1b")?.status,
+           SixelDcsFeedStatus::NeedMoreData);
+let tail = b"\\terminal text";
+let progress = dcs.feed(tail)?;
+assert_eq!(progress.status, SixelDcsFeedStatus::Complete);
+let remaining = &tail[progress.consumed..]; // "terminal text", ST has been consumed.
+let image = dcs.finish()?;
+assert_eq!(image.dimensions(), (12, 6));
+```
+
+The result's `consumed` count always refers to the current chunk. All header and payload
+commands can cross chunk boundaries without accumulating input. Status and byte ownership:
+
+| Status | Meaning / remaining bytes |
+|--------|---------------------------|
+| `NeedMoreData` | Entire chunk consumed; also returned after a trailing ESC while waiting for lookahead. Empty chunks do not signal EOF. |
+| `Complete` | ST (`ESC \\` or `0x9c`) consumed; subsequent terminal data remains untouched. |
+| `Cancelled(byte)` | CAN or SUB consumed; `finish()` yields the partial image, `abort()` discards it. |
+| `Interrupted(0x1b)` | ESC **already consumed**, possibly in the previous chunk; the following non-backslash byte remains untouched. Resume the outer ANSI parser in its escape state, or prepend ESC to the remainder. |
+| `Interrupted(byte)` for other C1 | Control byte **not consumed**; give the entire remainder to the outer ANSI parser. |
+
+- Once terminal, further feeds consume zero bytes and repeat the status.
+- `finish()` requires completion, cancellation or interruption. EOF in the introducer,
+    header, payload or after a lone ESC is an error. For tolerant EOF use `begin_frame()`.
+- A successful `finish()` commits the palette, including changes before cancellation.
+    `abort()`, drop and errors discard it. After an error the session cannot recover;
+    the outer parser must resynchronize (no consumed count is returned on errors).
+- For successive images, finish or abort the session, then call `begin_dcs()` again
+    on the same decoder and feed the next DCS. Ordinary text between images remains
+    the caller's responsibility.
+
+This adapter does not search arbitrary ANSI streams, skip unrelated control strings,
+or accept non-SIXEL DCS headers. If an ANSI parser already handles framing, prefer
+`begin_frame()`. Neither API exposes progressive image previews.
+
 ### Image Size Limits
 
 Encoding accepts widths up to 1,000,000 pixels. Height rounded up to a complete

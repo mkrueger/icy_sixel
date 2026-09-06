@@ -5,6 +5,9 @@ use crate::{
 
 use crate::{SIXEL_CELL_HEIGHT, SIXEL_MAX_PIXELS as MAX_PIXELS};
 
+mod dcs_stream;
+pub use dcs_stream::{SixelDcsFeedResult, SixelDcsFeedStatus, SixelDcsStreamDecoder};
+
 #[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::{__m128i, _mm_loadu_si128, _mm_storeu_si128};
 
@@ -209,51 +212,14 @@ impl<'a> AnsiPayload<'a> {
     }
 
     fn parse_dcs(bytes: &'a [u8], mut idx: usize) -> Result<Self> {
-        let mut params: [u16; 16] = [0; 16];
-        let mut param_count = 0usize;
-        let mut current: u16 = 0;
-        let mut has_digit = false;
-        let mut command_found = false;
-
-        while idx < bytes.len() {
-            match bytes[idx] {
-                b'0'..=b'9' => {
-                    let digit = (bytes[idx] - b'0') as u16;
-                    current = current.saturating_mul(10).saturating_add(digit);
-                    has_digit = true;
-                    idx += 1;
-                }
-                b';' => {
-                    if param_count < params.len() {
-                        params[param_count] = if has_digit { current } else { 0 };
-                        param_count += 1;
-                    }
-                    current = 0;
-                    has_digit = false;
-                    idx += 1;
-                }
-                b'q' => {
-                    command_found = true;
-                    if param_count < params.len() && (has_digit || param_count > 0) {
-                        params[param_count] = if has_digit { current } else { 0 };
-                        param_count += 1;
-                    }
-                    idx += 1;
-                    break;
-                }
-                byte if terminates_sixel(byte) => {
-                    return Err(SixelError::InvalidData("malformed SIXEL data".to_string()));
-                }
-                // Header controls may be ignored, but other final bytes or
-                // intermediates do not identify a SIXEL DCS command.
-                byte if is_ignored_control(byte) => idx += 1,
-                _ => return Err(SixelError::InvalidData("invalid SIXEL DCS header".to_string())),
+        let mut header = DcsHeader::new();
+        let settings = loop {
+            let byte = *bytes.get(idx).ok_or_else(|| SixelError::InvalidData("missing SIXEL DCS command".into()))?;
+            idx += 1;
+            if let Some(settings) = header.push(byte)? {
+                break settings;
             }
-        }
-
-        if !command_found {
-            return Err(SixelError::InvalidData("missing SIXEL DCS command".to_string()));
-        }
+        };
 
         let payload_start = idx;
         let mut payload_end = bytes.len();
@@ -266,16 +232,36 @@ impl<'a> AnsiPayload<'a> {
             cursor += 1;
         }
 
-        let aspect_ratio = if param_count > 0 { Some(params[0]) } else { None };
-        let zero_color = if param_count > 1 { Some(params[1]) } else { None };
-        let grid_size = if param_count > 2 { Some(params[2]) } else { None };
-
         Ok(AnsiPayload {
-            aspect_ratio,
-            zero_color,
-            grid_size,
+            aspect_ratio: settings.aspect_ratio,
+            zero_color: settings.zero_color,
+            grid_size: settings.grid_size,
             payload: &bytes[payload_start..payload_end],
         })
+    }
+}
+
+/// Shared, bounded header parser for both batch and incremental DCS decoding.
+struct DcsHeader(Parameters<3>);
+
+impl DcsHeader {
+    fn new() -> Self {
+        Self(Parameters::new())
+    }
+
+    fn push(&mut self, byte: u8) -> Result<Option<DcsSettings>> {
+        if is_ignored_control(byte) || self.0.push(byte) {
+            return Ok(None);
+        }
+        if byte == b'q' {
+            let params = self.0.finish();
+            let param = |index: usize| params.get(index).map(|&value| value.min(i32::from(u16::MAX)) as u16);
+            return Ok(Some(DcsSettings::new(param(0), param(1), param(2))));
+        }
+        if terminates_sixel(byte) {
+            return Err(SixelError::InvalidData("malformed SIXEL data".into()));
+        }
+        Err(SixelError::InvalidData("invalid SIXEL DCS header".into()))
     }
 }
 
@@ -351,16 +337,132 @@ impl SixelDecoder {
     /// In transparent mode (P2=1), undrawn pixels remain transparent.
     /// CAN, SUB, ESC and C1 controls stop decoding, returning the partial image and preceding palette changes.
     pub fn decode_from_dcs(&mut self, payload: &[u8], settings: DcsSettings) -> Result<SixelImage> {
-        let mut frame = FrameDecoder::new(settings, self.palette.clone())?;
-        frame.process(payload)?;
+        let mut stream = self.begin_frame(settings)?;
+        let _ = stream.feed(payload)?;
+        stream.finish()
+    }
+
+    /// Starts an incremental SIXEL payload, after the ANSI parser has consumed the DCS header and `q`.
+    ///
+    /// The session borrows this decoder until finished, aborted or dropped. Only a successful
+    /// [`SixelStreamDecoder::finish`] commits its palette; dropping it discards the entire frame.
+    pub fn begin_frame(&mut self, settings: DcsSettings) -> Result<SixelStreamDecoder<'_>> {
+        let frame = FrameDecoder::new(settings, self.palette.clone())?;
+        Ok(SixelStreamDecoder {
+            decoder: self,
+            frame: Some(frame),
+            settings,
+            terminator: None,
+        })
+    }
+
+    /// Starts an incremental complete DCS sequence, including its introducer, header and ST.
+    ///
+    /// Input must start with `ESC P` or the 8-bit DCS byte (0x90), not arbitrary terminal text.
+    /// Unlike payload streaming, this adapter consumes ST and rejects unfinished sequences
+    /// at EOF. See [`SixelDcsStreamDecoder`] for interruption and remainder handling.
+    pub fn begin_dcs(&mut self) -> SixelDcsStreamDecoder<'_> {
+        SixelDcsStreamDecoder::new(self)
+    }
+
+    /// Restores all color registers to the standard SIXEL palette.
+    pub fn reset_palette(&mut self) {
+        self.palette = Palette::new();
+    }
+}
+
+/// State returned after feeding a chunk of SIXEL payload.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SixelFeedStatus {
+    /// All input was consumed; a chunk boundary does not finish pending commands.
+    NeedMoreData,
+    /// A CAN, SUB, ESC or C1 byte ended the payload; the byte remains unconsumed.
+    Terminated(u8),
+}
+
+/// Progress within the input slice passed to [`SixelStreamDecoder::feed`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[must_use]
+pub struct SixelFeedResult {
+    /// Bytes consumed from this call's slice, excluding any terminating byte.
+    pub consumed: usize,
+    /// Whether decoding needs more input or reached a terminating control.
+    pub status: SixelFeedStatus,
+}
+
+/// Incremental decoder for one SIXEL payload, without a DCS header.
+///
+/// Input is processed immediately with fixed-size parser state; only the image canvas grows.
+/// Existing decoder dimension and canvas limits apply. This is not a progressive image API.
+/// A parse error invalidates the session and discards its canvas and uncommitted palette.
+///
+/// ```rust
+/// use icy_sixel::{DcsSettings, SixelDecoder, SixelFeedStatus};
+/// let mut decoder = SixelDecoder::new();
+/// let mut frame = decoder.begin_frame(DcsSettings::default())?;
+/// assert_eq!(frame.feed(b"#1;2;100;0;0!1")?.status, SixelFeedStatus::NeedMoreData);
+/// let tail = b"2~\x1b\\remaining terminal data";
+/// let progress = frame.feed(tail)?;
+/// assert_eq!(progress.consumed, 2);
+/// assert_eq!(progress.status, SixelFeedStatus::Terminated(0x1b));
+/// let image = frame.finish()?;
+/// assert_eq!(image.dimensions(), (12, 6));
+/// // Give &tail[progress.consumed..] back to the ANSI parser, including ESC.
+/// # Ok::<(), icy_sixel::SixelError>(())
+/// ```
+#[must_use = "finish the session to obtain an image and commit its palette"]
+pub struct SixelStreamDecoder<'a> {
+    decoder: &'a mut SixelDecoder,
+    frame: Option<FrameDecoder>,
+    settings: DcsSettings,
+    terminator: Option<u8>,
+}
+
+impl SixelStreamDecoder<'_> {
+    /// Feeds arbitrary payload chunks; empty chunks do not signal EOF.
+    ///
+    /// A terminator and all subsequent bytes remain owned by the caller. In particular, ESC
+    /// ends the payload immediately, even if the following `\\` arrives in another chunk.
+    /// Once terminated, further calls consume zero bytes and return the same status.
+    /// On error, no consumed count is returned: discard this payload using the outer ANSI parser.
+    pub fn feed(&mut self, bytes: &[u8]) -> Result<SixelFeedResult> {
+        let frame = self.frame.as_mut().ok_or_else(|| SixelError::InvalidData("stream decoder has failed".into()))?;
+        if let Some(byte) = self.terminator {
+            return Ok(SixelFeedResult {
+                consumed: 0,
+                status: SixelFeedStatus::Terminated(byte),
+            });
+        }
+        match frame.process(bytes) {
+            Ok(progress) => {
+                if let SixelFeedStatus::Terminated(byte) = progress.status {
+                    self.terminator = Some(byte);
+                }
+                Ok(progress)
+            }
+            Err(error) => {
+                self.frame = None;
+                Err(error)
+            }
+        }
+    }
+
+    /// Finishes the frame, including a pending command, and commits its palette on success.
+    ///
+    /// This also accepts explicit EOF without a terminator, matching the one-shot API.
+    /// After CAN/SUB or another terminator it returns the partial image. Call [`Self::abort`]
+    /// instead to discard it. Errors, including errors discovered at EOF, never commit a palette.
+    pub fn finish(mut self) -> Result<SixelImage> {
+        let mut frame = self.frame.take().ok_or_else(|| SixelError::InvalidData("stream decoder has failed".into()))?;
+        frame.finish_command()?;
         let aspect_ratio = frame
             .raster_aspect_ratio
-            .unwrap_or_else(|| settings.aspect_ratio.map(PixelAspectRatio::from_p1).unwrap_or_default());
+            .unwrap_or_else(|| self.settings.aspect_ratio.map(PixelAspectRatio::from_p1).unwrap_or_default());
         let (pixels, width, height, palette) = frame.finalize()?;
 
         // Mirrors the decoded pixels: only P2=1 leaves undrawn pixels transparent.
-        let background_mode = BackgroundMode::from_p2(settings.zero_color.unwrap_or(0));
-        self.palette = palette;
+        let background_mode = BackgroundMode::from_p2(self.settings.zero_color.unwrap_or(0));
+        self.decoder.palette = palette;
 
         Ok(SixelImage {
             pixels,
@@ -371,10 +473,8 @@ impl SixelDecoder {
         })
     }
 
-    /// Restores all color registers to the standard SIXEL palette.
-    pub fn reset_palette(&mut self) {
-        self.palette = Palette::new();
-    }
+    /// Discards this frame and its palette changes, equivalent to dropping the session.
+    pub fn abort(self) {}
 }
 
 struct FrameDecoder {
@@ -395,6 +495,62 @@ struct FrameDecoder {
     target_height: usize,
     /// Frame-local background, independent of palette changes and canvas growth.
     background: [u8; 4],
+    command: PayloadCommand,
+}
+
+enum PayloadCommand {
+    Data,
+    Repeat(usize),
+    Color(Parameters<5>),
+    Raster(Parameters<4>),
+}
+
+struct Parameters<const N: usize> {
+    values: [i32; N],
+    count: usize,
+    current: i32,
+    pending: bool,
+}
+
+impl<const N: usize> Parameters<N> {
+    fn new() -> Self {
+        Self {
+            values: [0; N],
+            count: 0,
+            current: 0,
+            pending: false,
+        }
+    }
+
+    fn push(&mut self, byte: u8) -> bool {
+        match byte {
+            b'0'..=b'9' => {
+                self.current = self.current.saturating_mul(10).saturating_add(i32::from(byte - b'0'));
+                self.pending = true;
+            }
+            b';' => {
+                self.store();
+                self.pending = true;
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    fn store(&mut self) {
+        if self.count < N {
+            self.values[self.count] = self.current;
+            self.count += 1;
+        }
+        self.current = 0;
+    }
+
+    fn finish(&mut self) -> &[i32] {
+        if self.pending {
+            self.store();
+        }
+        &self.values[..self.count]
+    }
 }
 
 impl FrameDecoder {
@@ -428,6 +584,7 @@ impl FrameDecoder {
             target_width: 0,
             target_height: 0,
             background,
+            command: PayloadCommand::Data,
         };
 
         decoder.apply_dcs_settings(settings);
@@ -458,46 +615,69 @@ impl FrameDecoder {
         }
     }
 
-    fn process(&mut self, data: &[u8]) -> Result<()> {
+    fn process(&mut self, data: &[u8]) -> Result<SixelFeedResult> {
         let mut idx = 0usize;
         while idx < data.len() {
-            match data[idx] {
-                b'\n' | b'\r' | b'\t' | b'\x0c' => {
-                    idx += 1;
+            let byte = data[idx];
+            if is_ignored_control(byte) {
+                idx += 1;
+                continue;
+            }
+            let consumed = match &mut self.command {
+                PayloadCommand::Repeat(value) if byte.is_ascii_digit() => {
+                    *value = value.saturating_mul(10).saturating_add(usize::from(byte - b'0'));
+                    true
                 }
+                PayloadCommand::Color(params) => params.push(byte),
+                PayloadCommand::Raster(params) => params.push(byte),
+                _ => false,
+            };
+            if consumed {
+                idx += 1;
+                continue;
+            }
+            if !matches!(self.command, PayloadCommand::Data) {
+                self.finish_command()?;
+            }
+            match byte {
                 b'$' => {
                     self.pos_x = 0;
-                    idx += 1;
                 }
                 b'-' => {
                     self.pos_x = 0;
                     self.pos_y = self.pos_y.checked_add(SIXEL_CELL_HEIGHT).ok_or(SixelError::IntegerOverflow)?;
-                    idx += 1;
                 }
-                b'!' => {
-                    let (value, consumed) = read_number(data, idx + 1);
-                    let repeat = if value == 0 { 1 } else { value };
-                    if repeat > SIXEL_REPEAT_MAX {
-                        return Err(SixelError::InvalidData("malformed SIXEL data".to_string()));
-                    }
-                    self.repeat = repeat;
-                    idx += 1 + consumed;
+                b'!' => self.command = PayloadCommand::Repeat(0),
+                b'#' => self.command = PayloadCommand::Color(Parameters::new()),
+                b'"' => self.command = PayloadCommand::Raster(Parameters::new()),
+                b'?'..=b'~' => self.handle_sixel(byte)?,
+                byte if terminates_sixel(byte) => {
+                    return Ok(SixelFeedResult {
+                        consumed: idx,
+                        status: SixelFeedStatus::Terminated(byte),
+                    })
                 }
-                b'#' => {
-                    let consumed = self.handle_color_command(data, idx + 1)?;
-                    idx += 1 + consumed;
-                }
-                b'"' => {
-                    let consumed = self.handle_raster_command(data, idx + 1)?;
-                    idx += 1 + consumed;
-                }
-                b'?'..=b'~' => {
-                    self.handle_sixel(data[idx])?;
-                    idx += 1;
-                }
-                byte if terminates_sixel(byte) => break,
-                _ => idx += 1,
+                _ => {}
             }
+            idx += 1;
+        }
+        Ok(SixelFeedResult {
+            consumed: idx,
+            status: SixelFeedStatus::NeedMoreData,
+        })
+    }
+
+    fn finish_command(&mut self) -> Result<()> {
+        match std::mem::replace(&mut self.command, PayloadCommand::Data) {
+            PayloadCommand::Data => {}
+            PayloadCommand::Repeat(value) => {
+                if value > SIXEL_REPEAT_MAX {
+                    return Err(SixelError::InvalidData("malformed SIXEL data".to_string()));
+                }
+                self.repeat = value.max(1);
+            }
+            PayloadCommand::Color(mut params) => self.handle_color_command(params.finish())?,
+            PayloadCommand::Raster(mut params) => self.handle_raster_command(params.finish())?,
         }
         Ok(())
     }
@@ -566,15 +746,11 @@ impl FrameDecoder {
         Ok(())
     }
 
-    fn handle_color_command(&mut self, data: &[u8], start: usize) -> Result<usize> {
-        let mut storage = [0i32; 5];
-        let (consumed, count) = collect_params(data, start, &mut storage);
-        let params = &storage[..count];
-
+    fn handle_color_command(&mut self, params: &[i32]) -> Result<()> {
         if params.is_empty() {
             self.color_index = 0;
             self.current_color = self.palette.rgb_bytes(0);
-            return Ok(consumed);
+            return Ok(());
         }
 
         let color_idx = params[0].max(0) as usize;
@@ -596,12 +772,11 @@ impl FrameDecoder {
             }
         }
 
-        Ok(consumed)
+        Ok(())
     }
 
-    fn handle_raster_command(&mut self, data: &[u8], start: usize) -> Result<usize> {
-        let mut storage = [0i32; 4];
-        let (consumed, count) = collect_params(data, start, &mut storage);
+    fn handle_raster_command(&mut self, storage: &[i32]) -> Result<()> {
+        let count = storage.len();
         if count > 0 {
             let pad = storage[0].max(1) as usize;
             self.pad = pad;
@@ -640,7 +815,7 @@ impl FrameDecoder {
             self.canvas.ensure_visible(width, height, self.background)?;
         }
 
-        Ok(consumed)
+        Ok(())
     }
 
     fn guard_dimensions(&self, width: usize, height: usize) -> Result<()> {
@@ -910,71 +1085,6 @@ fn terminates_sixel(byte: u8) -> bool {
 #[inline]
 fn is_ignored_control(byte: u8) -> bool {
     matches!(byte, 0x00..=0x17 | 0x19 | 0x1c..=0x1f | 0x7f)
-}
-
-fn read_number(data: &[u8], start: usize) -> (usize, usize) {
-    let mut idx = start;
-    let mut value: usize = 0;
-    let mut consumed = 0;
-    while idx < data.len() {
-        match data[idx] {
-            b'0'..=b'9' => {
-                value = value.saturating_mul(10).saturating_add((data[idx] - b'0') as usize);
-                idx += 1;
-                consumed += 1;
-            }
-            byte if is_ignored_control(byte) => {
-                idx += 1;
-                consumed += 1;
-            }
-            _ => break,
-        }
-    }
-    (value, consumed)
-}
-
-fn collect_params(data: &[u8], start: usize, storage: &mut [i32]) -> (usize, usize) {
-    let mut idx = start;
-    let mut consumed = 0usize;
-    let mut written = 0usize;
-    let mut current = 0i32;
-    let mut has_digit = false;
-    let mut last_was_separator = false;
-
-    while idx < data.len() {
-        match data[idx] {
-            b'0'..=b'9' => {
-                current = current.saturating_mul(10).saturating_add((data[idx] - b'0') as i32);
-                has_digit = true;
-                last_was_separator = false;
-                idx += 1;
-                consumed += 1;
-            }
-            b';' => {
-                if written < storage.len() {
-                    storage[written] = if has_digit { current } else { 0 };
-                    written += 1;
-                }
-                current = 0;
-                has_digit = false;
-                last_was_separator = true;
-                idx += 1;
-                consumed += 1;
-            }
-            byte if is_ignored_control(byte) => {
-                idx += 1;
-                consumed += 1;
-            }
-            _ => break,
-        }
-    }
-
-    if (has_digit || last_was_separator) && written < storage.len() {
-        storage[written] = if has_digit { current } else { 0 };
-        written += 1;
-    }
-
-    (consumed, written)
 }
 
 fn percent_to_byte(value: i32) -> u8 {
