@@ -77,7 +77,8 @@ pub enum SixelError {
 /// Result type for SIXEL operations.
 pub type Result<T> = core::result::Result<T, SixelError>;
 
-// Internal constants used by the decoder
+// Internal SIXEL limits
+pub(crate) const SIXEL_REPEAT_MAX: usize = 0xffff;
 pub(crate) const SIXEL_PALETTE_MAX: usize = 256;
 pub(crate) const SIXEL_WIDTH_LIMIT: usize = 1000000;
 pub(crate) const SIXEL_HEIGHT_LIMIT: usize = 1000000;

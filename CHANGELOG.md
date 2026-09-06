@@ -15,6 +15,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An omitted color index now refreshes the cached drawing color from register 0.
 - Encoder enforces decoder-compatible dimensions and canvas area, including the complete last six-pixel band.
 - Encoder rounds RGB palette channels to the nearest SIXEL percentage instead of always rounding down.
+- Encoder splits long runs at 65,535 repetitions so its output stays within the decoder's repeat limit.
+- Encoder rejects overflowing RGBA sizes and scratch-buffer sizes with an error instead of panicking,
+	and checks dimension conversions before passing them to quantette.
+- Transparent pixels (alpha < 128) no longer affect color-palette generation. Mask-aware Floyd–Steinberg
+	dithering prevents error diffusion through transparent pixels; fully opaque images retain the existing quantette path.
+- Decoder prefers explicit raster aspect ratios over DCS P1 when representable by `PixelAspectRatio`.
+	Equivalent fractions are normalized; unsupported ratios retain the P1 fallback without changing the public enum.
+- Decoder SIMD fills no longer compute pointers beyond the allocation when checking loop bounds.
+- HLS hue normalization no longer overflows for large or saturated color parameters.
+- Opaque background pixels consistently use register 0's color at frame start, independent of raster
+	preallocation, canvas growth, or palette changes within the frame. Transparent backgrounds remain transparent.
+- Fuzz targets use the current encoder options and decoder API. Roundtrip fuzzing now rejects encode/decode
+	failures for valid input and checks dimensions, buffer length, and alpha preservation.
+
+### Changed
+- CI checks formatting and Clippy for the separate fuzz workspace as well as the main workspace.
 
 ## [0.6.0] - 2026-08-19
 

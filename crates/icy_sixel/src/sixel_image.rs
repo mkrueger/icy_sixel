@@ -45,12 +45,15 @@ impl BackgroundMode {
     }
 }
 
-/// Pixel aspect ratio from SIXEL DCS parameters (P1 parameter).
+/// Pixel aspect ratio from SIXEL raster attributes or DCS parameters (P1).
 ///
 /// SIXEL images can specify a pixel aspect ratio that indicates how pixels
 /// should be displayed. This is a historical feature from when terminals had
 /// non-square pixels. Most modern terminals display square pixels and ignore
 /// this setting, but the information is preserved for applications that need it.
+/// When decoding, explicit raster attributes take precedence if their ratio is
+/// representable by this enum (1:1, 2:1, 3:1 or 5:1, including equivalent fractions).
+/// Other raster ratios fall back to P1, or to square pixels if P1 is absent.
 ///
 /// The P1 parameter in the DCS introducer maps to these ratios (vertical:horizontal):
 /// - P1 = 0, 1: 5:1 - very tall pixels
@@ -144,7 +147,7 @@ pub struct SixelImage {
     pub width: usize,
     /// Image height in pixels
     pub height: usize,
-    /// Pixel aspect ratio from DCS parameters
+    /// Pixel aspect ratio from supported raster attributes, falling back to DCS P1.
     pub aspect_ratio: PixelAspectRatio,
     /// Background mode from DCS parameters (P2)
     pub background_mode: BackgroundMode,
@@ -154,12 +157,15 @@ impl SixelImage {
     /// Decodes a complete ANSI SIXEL sequence.
     ///
     /// This is the main entry point for decoding SIXEL graphics.
+    /// Undrawn pixels are transparent for P2=1 and otherwise use the initial
+    /// color of register 0 (black), unaffected by palette definitions in the stream.
     #[must_use = "this returns the decoded SixelImage"]
     pub fn decode(data: &[u8]) -> Result<Self> {
         crate::decoder::decode_sixel(data)
     }
 
     /// Decodes a SIXEL payload using explicit DCS settings.
+    /// Background filling follows the same rules as [`Self::decode`].
     #[must_use = "this returns the decoded SixelImage"]
     pub fn decode_from_dcs(payload: &[u8], settings: DcsSettings) -> Result<Self> {
         crate::decoder::decode_sixel_from_dcs(payload, settings)

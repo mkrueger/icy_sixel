@@ -16,8 +16,8 @@ quantette = { version = "0.6.0", default-features = false, features = ["kmeans"]
 thiserror = "2.0"
 
 [dev-dependencies]
-image = { version = "0.25.9", default-features = false, features = ["png"] }
-criterion = { version = "0.8.1", features = ["html_reports"] }
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+criterion = { version = "0.8.2", features = ["html_reports"] }
 pretty_assertions = "1.4.1"
 
 [[bench]]

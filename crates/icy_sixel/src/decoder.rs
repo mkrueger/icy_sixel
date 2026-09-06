@@ -1,10 +1,9 @@
 use crate::{
     sixel_image::{BackgroundMode, PixelAspectRatio, SixelImage},
-    Result, SixelError, SIXEL_HEIGHT_LIMIT, SIXEL_PALETTE_MAX, SIXEL_WIDTH_LIMIT,
+    Result, SixelError, SIXEL_HEIGHT_LIMIT, SIXEL_PALETTE_MAX, SIXEL_REPEAT_MAX, SIXEL_WIDTH_LIMIT,
 };
 
 use crate::{SIXEL_CELL_HEIGHT, SIXEL_MAX_PIXELS as MAX_PIXELS};
-const MAX_REPEAT: usize = 0xffff;
 
 #[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::{__m128i, _mm_loadu_si128, _mm_storeu_si128};
@@ -355,12 +354,18 @@ impl SixelDecoder {
     }
 
     /// Decodes one DCS payload while preserving color registers on success.
+    ///
+    /// Opaque undrawn pixels use register 0's color at frame start; later palette
+    /// changes affect drawing and subsequent frames, not this frame's background.
+    /// In transparent mode (P2=1), undrawn pixels remain transparent.
     pub fn decode_from_dcs(&mut self, payload: &[u8], settings: DcsSettings) -> Result<SixelImage> {
         let mut frame = FrameDecoder::new(settings, self.palette.clone())?;
         frame.process(payload)?;
+        let aspect_ratio = frame
+            .raster_aspect_ratio
+            .unwrap_or_else(|| settings.aspect_ratio.map(PixelAspectRatio::from_p1).unwrap_or_default());
         let (pixels, width, height, palette) = frame.finalize()?;
 
-        let aspect_ratio = settings.aspect_ratio.map(PixelAspectRatio::from_p1).unwrap_or_default();
         // Mirrors the decoded pixels: only P2=1 leaves undrawn pixels transparent.
         let background_mode = BackgroundMode::from_p2(settings.zero_color.unwrap_or(0));
         self.palette = palette;
@@ -392,16 +397,16 @@ struct FrameDecoder {
     max_y: usize,
     pan: usize,
     pad: usize,
+    /// An explicit raster ratio takes precedence over the DCS P1 macro.
+    raster_aspect_ratio: Option<PixelAspectRatio>,
     target_width: usize,
     target_height: usize,
-    background_index: usize,
-    /// P2=1 means transparent mode: undrawn pixels remain transparent (alpha=0)
-    transparent_mode: bool,
+    /// Frame-local background, independent of palette changes and canvas growth.
+    background: [u8; 4],
 }
 
 impl FrameDecoder {
     fn new(settings: DcsSettings, palette: Palette) -> Result<Self> {
-        let background_index = 0usize;
         let repeat = 1usize;
         let current_color = palette.rgb_bytes(0);
 
@@ -412,7 +417,7 @@ impl FrameDecoder {
         let background = if transparent_mode {
             [0, 0, 0, 0] // Transparent
         } else {
-            palette.rgb_bytes(background_index)
+            palette.rgb_bytes(0)
         };
 
         let mut decoder = Self {
@@ -427,10 +432,10 @@ impl FrameDecoder {
             max_y: 0,
             pan: 2,
             pad: 1,
+            raster_aspect_ratio: None,
             target_width: 0,
             target_height: 0,
-            background_index,
-            transparent_mode,
+            background,
         };
 
         decoder.apply_dcs_settings(settings);
@@ -480,7 +485,7 @@ impl FrameDecoder {
                 b'!' => {
                     let (value, consumed) = read_number(data, idx + 1);
                     let repeat = if value == 0 { 1 } else { value };
-                    if repeat > MAX_REPEAT {
+                    if repeat > SIXEL_REPEAT_MAX {
                         return Err(SixelError::InvalidData("malformed SIXEL data".to_string()));
                     }
                     self.repeat = repeat;
@@ -519,8 +524,7 @@ impl FrameDecoder {
             return Err(SixelError::InvalidData("malformed SIXEL data".to_string()));
         }
 
-        let background = self.background_rgb();
-        self.canvas.ensure_visible(width_needed, height_needed, background)?;
+        self.canvas.ensure_visible(width_needed, height_needed, self.background)?;
 
         // Use cached color for performance
         let color = self.current_color;
@@ -613,6 +617,16 @@ impl FrameDecoder {
         if count > 1 {
             let pan = storage[1].max(1) as usize;
             self.pan = pan;
+            // Raster parameters are vertical:horizontal. Normalize without
+            // multiplication so large parameter values cannot overflow.
+            // Ratios outside the public enum fall back to the DCS metadata.
+            self.raster_aspect_ratio = match (self.pad / self.pan, self.pad % self.pan) {
+                (1, 0) => Some(PixelAspectRatio::Square),
+                (2, 0) => Some(PixelAspectRatio::Ratio2To1),
+                (3, 0) => Some(PixelAspectRatio::Ratio3To1),
+                (5, 0) => Some(PixelAspectRatio::Ratio5To1),
+                _ => None,
+            };
         }
         if count > 2 {
             let ph = storage[2].max(0) as usize;
@@ -628,11 +642,10 @@ impl FrameDecoder {
         }
 
         if self.target_width > 0 || self.target_height > 0 {
-            let background = self.background_rgb();
             let width = self.target_width.max(1);
             let height = self.target_height.max(1);
             self.guard_dimensions(width, height)?;
-            self.canvas.ensure_visible(width, height, background)?;
+            self.canvas.ensure_visible(width, height, self.background)?;
         }
 
         Ok(consumed)
@@ -648,22 +661,13 @@ impl FrameDecoder {
         Ok(())
     }
 
-    fn background_rgb(&self) -> [u8; 4] {
-        if self.transparent_mode {
-            [0, 0, 0, 0] // Transparent background
-        } else {
-            self.palette.rgb_bytes(self.background_index.min(SIXEL_PALETTE_MAX - 1))
-        }
-    }
-
     fn finalize(mut self) -> Result<(Vec<u8>, usize, usize, Palette)> {
         let width = self.max_x + 1;
         let height = self.max_y + 1;
         let desired_width = width.max(self.target_width.max(1));
         let desired_height = height.max(self.target_height.max(1));
         self.guard_dimensions(desired_width, desired_height)?;
-        let background = self.background_rgb();
-        self.canvas.ensure_visible(desired_width, desired_height, background)?;
+        self.canvas.ensure_visible(desired_width, desired_height, self.background)?;
         let (width, height) = (self.canvas.width, self.canvas.height);
         Ok((self.canvas.into_pixels(), width, height, self.palette))
     }
@@ -978,10 +982,9 @@ fn hls_to_rgb(h: i32, l: i32, s: i32) -> [u8; 3] {
         return [gray, gray, gray];
     }
 
-    let mut hue = (h + 240) % 360;
-    if hue < 0 {
-        hue += 360;
-    }
+    // Normalize before applying SIXEL's hue offset: parsed values may have
+    // saturated at i32::MAX, so adding the offset first could overflow.
+    let hue = (h.rem_euclid(360) + 240) % 360;
     let hue = hue as f64 / 360.0;
     let lum = (l.clamp(0, 100) as f64) / 100.0;
     let sat = (s.clamp(0, 100) as f64) / 100.0;
@@ -1080,16 +1083,38 @@ unsafe fn fill_rgba_span_sse(buf: &mut [u8], color: [u8; 4]) {
     }
 
     let vec = _mm_loadu_si128(pattern.as_ptr() as *const __m128i);
-    let mut ptr = buf.as_mut_ptr();
-    let end = ptr.add(buf.len());
-    while ptr.add(16) <= end {
-        _mm_storeu_si128(ptr as *mut __m128i, vec);
-        ptr = ptr.add(16);
+    let mut chunks = buf.chunks_exact_mut(16);
+    for chunk in &mut chunks {
+        // Each chunk contains exactly 16 writable bytes. No pointer past the
+        // allocation is computed, including when the final chunk ends there.
+        _mm_storeu_si128(chunk.as_mut_ptr() as *mut __m128i, vec);
     }
-    let remaining = end.offset_from(ptr) as usize;
-    if remaining > 0 {
-        std::ptr::copy_nonoverlapping(pattern.as_ptr(), ptr, remaining);
-    }
+    let remainder = chunks.into_remainder();
+    remainder.copy_from_slice(&pattern[..remainder.len()]);
 }
 
-// RGB fill functions removed - decoder now outputs RGBA only
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rgba_fill_handles_unaligned_slices_and_tails() {
+        for len in (0..=129).chain([255, 256, 257]) {
+            for offset in 0..4 {
+                for color in [[0, 0, 0, 0], [17, 83, 149, 255]] {
+                    let expected: Vec<_> = (0..len).map(|i| color[i % 4]).collect();
+                    let mut scalar = vec![0xa5; len];
+                    fill_rgba_span_scalar(&mut scalar, color);
+                    assert_eq!(scalar, expected);
+
+                    // Boxed slices end exactly at the allocation boundary, with
+                    // no spare capacity to hide an out-of-bounds pointer add.
+                    let mut data = vec![0xa5; offset + len].into_boxed_slice();
+                    fill_rgba_span(&mut data[offset..], color);
+                    assert_eq!(&data[..offset], vec![0xa5; offset].as_slice());
+                    assert_eq!(&data[offset..], expected);
+                }
+            }
+        }
+    }
+}

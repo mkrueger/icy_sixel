@@ -3,8 +3,14 @@
 //! This encoder uses the quantette library (MIT/Apache licensed) for optimal
 //! color palette generation and dithering, then encodes the result to SIXEL format.
 
-use crate::{BackgroundMode, PixelAspectRatio, Result, SixelError};
-use quantette::{deps::palette::Srgb, dither::FloydSteinberg, ImageRef, PaletteSize, Pipeline};
+use crate::{BackgroundMode, PixelAspectRatio, Result, SixelError, SIXEL_REPEAT_MAX};
+use quantette::{
+    color_map::{IndexedColorMap, NearestNeighborColorMap},
+    color_space::{oklab_to_srgb8, srgb8_to_oklab},
+    deps::palette::{Oklab, Srgb},
+    dither::FloydSteinberg,
+    ImageRef, PaletteSize, Pipeline,
+};
 
 // Re-export QuantizeMethod for public API
 pub use quantette::QuantizeMethod;
@@ -95,7 +101,8 @@ impl Default for EncodeOptions {
 ///
 /// # Returns
 /// A SIXEL-encoded string that can be displayed on compatible terminals.
-/// Transparent pixels (alpha=0) are preserved using SIXEL's P2=1 mode.
+/// Pixels with alpha < 128 are transparent and preserved using SIXEL's P2=1 mode.
+/// Their RGB values do not affect the palette or error diffusion.
 ///
 /// # Example
 /// ```ignore
@@ -123,20 +130,24 @@ pub(crate) fn sixel_encode_impl(
     if width == 0 || height == 0 {
         return Err(SixelError::InvalidDimensions { width, height });
     }
-    let expected = width * height * 4;
+    let expected = width.checked_mul(height).and_then(|v| v.checked_mul(4)).ok_or(SixelError::IntegerOverflow)?;
     if rgba.len() != expected {
         return Err(SixelError::BufferSizeMismatch { expected, actual: rgba.len() });
     }
+    let image_width = u32::try_from(width).map_err(|_| SixelError::InvalidDimensions { width, height })?;
+    let image_height = u32::try_from(height).map_err(|_| SixelError::InvalidDimensions { width, height })?;
 
     // Single pass over the RGBA buffer building both the transparency mask
     // (set bit = opaque) and the Srgb<u8> pixels used for quantization
     // (quantette uses palette crate types).
-    let pixel_count = width * height;
+    let pixel_count = expected / 4;
     let mut opacity_mask = BitMask::zeros(pixel_count);
+    let mut opaque_count = 0;
     let mut rgb_pixels: Vec<Srgb<u8>> = Vec::with_capacity(pixel_count);
     for (i, c) in rgba.chunks_exact(4).enumerate() {
         if c[3] >= 128 {
             opacity_mask.set(i);
+            opaque_count += 1;
         }
         rgb_pixels.push(Srgb::new(c[0], c[1], c[2]));
     }
@@ -146,11 +157,16 @@ pub(crate) fn sixel_encode_impl(
     let palette_size = PaletteSize::try_from(max_colors).unwrap_or(PaletteSize::MAX);
 
     // Create image reference for quantette
-    let image = ImageRef::new(width as u32, height as u32, &rgb_pixels).map_err(|e| SixelError::Quantization(e.to_string()))?;
+    let image = ImageRef::new(image_width, image_height, &rgb_pixels).map_err(|e| SixelError::Quantization(e.to_string()))?;
 
     // Use configured quantization method with diffusion-based dithering
     let diffusion = opts.diffusion.clamp(0.0, 1.0);
     let pipeline = Pipeline::new().palette_size(palette_size).quantize_method(opts.quantize_method.clone());
+
+    if opaque_count != pixel_count {
+        let (palette, indices) = quantize_transparent(&rgb_pixels, &opacity_mask, width, pipeline, diffusion)?;
+        return encode_indexed_to_sixel(&palette, &indices, &opacity_mask, width, height, pixel_aspect_ratio, background_mode);
+    }
 
     // Apply dithering based on diffusion setting
     let indexed_image = if diffusion <= 0.0 {
@@ -177,6 +193,84 @@ pub(crate) fn sixel_encode_impl(
 
     // Encode to SIXEL with transparency support
     encode_indexed_to_sixel(&palette, &indices, &opacity_mask, width, height, pixel_aspect_ratio, background_mode)
+}
+
+/// Quantette has no alpha-mask support. Train its palette only on visible pixels,
+/// then map the original layout without diffusing error through transparent pixels.
+fn quantize_transparent(pixels: &[Srgb<u8>], opacity_mask: &BitMask, width: usize, pipeline: Pipeline, diffusion: f32) -> Result<(Vec<Rgb>, Vec<u8>)> {
+    let opaque_pixels: Vec<_> = pixels
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &pixel)| opacity_mask.get(i).then_some(pixel))
+        .collect();
+    if opaque_pixels.is_empty() {
+        // Raster attributes preserve the dimensions; no color or index is used.
+        return Ok((Vec::new(), Vec::new()));
+    }
+
+    let palette = pipeline
+        .input_slice(&opaque_pixels)
+        .map_err(|e| SixelError::Quantization(e.to_string()))?
+        .output_oklab_palette();
+    drop(opaque_pixels);
+    let color_map = NearestNeighborColorMap::new(palette);
+    let colors = srgb8_to_oklab(pixels);
+    let indices = map_visible_pixels(&colors, opacity_mask, width, &color_map, diffusion);
+    let palette = oklab_to_srgb8(color_map.palette())
+        .into_iter()
+        .map(|c| Rgb {
+            r: c.red,
+            g: c.green,
+            b: c.blue,
+        })
+        .collect();
+    Ok((palette, indices))
+}
+
+/// Serpentine Floyd–Steinberg in Oklab, with transparent pixels acting as sinks
+/// for incoming error. The palette and nearest-neighbor search come from quantette.
+fn map_visible_pixels(colors: &[Oklab], opacity_mask: &BitMask, width: usize, color_map: &NearestNeighborColorMap<Oklab, f32, 3>, diffusion: f32) -> Vec<u8> {
+    let mut indices = vec![0; colors.len()];
+    if diffusion <= 0.0 {
+        for (i, color) in colors.iter().enumerate() {
+            if opacity_mask.get(i) {
+                indices[i] = color_map.palette_index(color);
+            }
+        }
+        return indices;
+    }
+
+    // Match the opaque pipeline's fallback for non-finite diffusion values.
+    let diffusion = FloydSteinberg::with_error_diffusion(diffusion).unwrap_or_default().error_diffusion();
+    let mut current = vec![[0.0; 3]; width + 2];
+    let mut next = vec![[0.0; 3]; width + 2];
+    for (y, row) in colors.chunks_exact(width).enumerate() {
+        let left_to_right = y % 2 == 0;
+        for step in 0..width {
+            let x = if left_to_right { step } else { width - 1 - step };
+            let i = y * width + x;
+            if !opacity_mask.get(i) {
+                continue;
+            }
+            let color = row[x];
+            let adjusted = Oklab::new(color.l + current[x + 1][0], color.a + current[x + 1][1], color.b + current[x + 1][2]);
+            let index = color_map.palette_index(&adjusted);
+            indices[i] = index;
+            let nearest = color_map.palette()[index];
+            let error = [adjusted.l - nearest.l, adjusted.a - nearest.a, adjusted.b - nearest.b];
+            let (forward, backward) = if left_to_right { (x + 2, x) } else { (x, x + 2) };
+            for (channel, error) in error.into_iter().enumerate() {
+                let error = error * diffusion / 16.0;
+                current[forward][channel] += error * 7.0;
+                next[backward][channel] += error * 3.0;
+                next[x + 1][channel] += error * 5.0;
+                next[forward][channel] += error;
+            }
+        }
+        std::mem::swap(&mut current, &mut next);
+        next.fill([0.0; 3]);
+    }
+    indices
 }
 
 /// Encode RGBA with default options.
@@ -244,7 +338,8 @@ fn encode_indexed_to_sixel(
     // Scratch buffer holding the 6-bit sixel value for every (color, column)
     // pair in the current band. Reused across bands; only the rows of colors
     // actually used in a band are cleared, so this stays cheap.
-    let mut sixels = vec![0u8; palette_len * width];
+    let scratch_len = palette_len.checked_mul(width).ok_or(SixelError::IntegerOverflow)?;
+    let mut sixels = vec![0u8; scratch_len];
     let mut colors_used = vec![false; palette_len];
 
     for band in 0..bands {
@@ -292,7 +387,7 @@ fn encode_indexed_to_sixel(
 
                 // Run-length encode consecutive identical sixel values
                 let mut run_len = 1usize;
-                while x + run_len < width && row[x + run_len] == bits {
+                while run_len < SIXEL_REPEAT_MAX && x + run_len < width && row[x + run_len] == bits {
                     run_len += 1;
                 }
 
@@ -348,6 +443,36 @@ fn write_number(out: &mut String, mut n: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transparent_pixels_stop_error_diffusion() {
+        let palette = quantette::PaletteBuf::new(vec![Oklab::new(0.0, 0.0, 0.0), Oklab::new(1.0, 0.0, 0.0)]).unwrap();
+        let color_map = NearestNeighborColorMap::new(palette);
+        // Horizontal, vertical and reverse-scan barriers, including an empty row.
+        for (width, len, visible) in [(3, 3, [0, 2]), (1, 3, [0, 2]), (3, 6, [3, 5]), (3, 9, [1, 7])] {
+            let colors = vec![Oklab::new(0.49, 0.0, 0.0); len];
+            let mut mask = BitMask::zeros(len);
+            for i in visible {
+                mask.set(i);
+            }
+            let indices = map_visible_pixels(&colors, &mask, width, &color_map, 1.0);
+            for i in visible {
+                assert_eq!(indices[i], 0, "error must not cross transparent pixels");
+            }
+        }
+    }
+
+    #[test]
+    fn masked_dithering_changes_visible_gradients() {
+        let palette = quantette::PaletteBuf::new(vec![Oklab::new(0.0, 0.0, 0.0), Oklab::new(1.0, 0.0, 0.0)]).unwrap();
+        let color_map = NearestNeighborColorMap::new(palette);
+        let colors = vec![Oklab::new(0.49, 0.0, 0.0); 3];
+        let mut mask = BitMask::zeros(3);
+        mask.set(0);
+        mask.set(1);
+        assert_eq!(map_visible_pixels(&colors, &mask, 3, &color_map, 0.0), [0, 0, 0]);
+        assert_eq!(map_visible_pixels(&colors, &mask, 3, &color_map, 1.0), [0, 1, 0]);
+    }
 
     #[test]
     #[allow(deprecated)]

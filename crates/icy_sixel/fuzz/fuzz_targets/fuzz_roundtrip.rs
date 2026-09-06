@@ -1,8 +1,8 @@
 #![no_main]
 
-use libfuzzer_sys::fuzz_target;
-use icy_sixel::{sixel_decode, sixel_encode, EncodeOptions};
 use arbitrary::Arbitrary;
+use icy_sixel::{sixel_encode, EncodeOptions, SixelImage};
+use libfuzzer_sys::fuzz_target;
 
 #[derive(Arbitrary, Debug)]
 struct FuzzInput {
@@ -12,32 +12,31 @@ struct FuzzInput {
 }
 
 fuzz_target!(|input: FuzzInput| {
-    // Skip invalid dimensions
-    let width = (input.width as usize).max(1).min(64);
-    let height = (input.height as usize).max(1).min(64);
-    
+    // Keep quantization work bounded for repeated fuzz runs.
+    let width = usize::from(input.width).clamp(1, 64);
+    let height = usize::from(input.height).clamp(1, 64);
+
     // Ensure we have enough pixels (RGBA = 4 bytes per pixel)
     let expected_size = width * height * 4;
     if input.pixels.len() < expected_size {
         return;
     }
-    
+
     let pixels = &input.pixels[..expected_size];
     let opts = EncodeOptions::default();
-    
-    // Encode
-    let sixel = match sixel_encode(pixels, width, height, &opts) {
-        Ok(s) => s,
-        Err(_) => return,
-    };
-    
-    // Decode - should never panic
-    let decoded = match sixel_decode(sixel.as_bytes()) {
-        Ok(img) => img,
-        Err(_) => return,
-    };
-    
-    // Basic sanity checks
-    assert!(decoded.width >= width, "Decoded width should be >= original");
-    // Height might differ due to 6-pixel band alignment
+
+    // This is valid, size-bounded RGBA input; encoding must succeed, and the
+    // decoder must accept every successful encoder output.
+    let sixel = sixel_encode(pixels, width, height, &opts).expect("valid RGBA input must encode");
+    let decoded = SixelImage::decode(sixel.as_bytes()).expect("encoder output must decode");
+
+    assert_eq!(decoded.width, width);
+    // A partially painted final band can extend the raster by up to five rows.
+    assert!((height..=height.div_ceil(6) * 6).contains(&decoded.height));
+    assert_eq!(decoded.pixels.len(), decoded.width * decoded.height * 4);
+    // Quantization changes RGB, but the binary alpha mask must survive exactly.
+    for (source, result) in pixels.chunks_exact(4).zip(decoded.pixels.chunks_exact(4)) {
+        assert_eq!(result[3], if source[3] < 128 { 0 } else { 255 });
+    }
+    assert!(decoded.pixels[expected_size..].chunks_exact(4).all(|pixel| pixel[3] == 0));
 });
