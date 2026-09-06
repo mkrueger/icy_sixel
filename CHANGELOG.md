@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- CLI animation validates speed and loop options, honors GIF loop metadata, and rejects unrepresentable frame delays.
+- GIF frame extraction stops at the requested frame; full animations decode raw frames incrementally,
+	bound the SIXEL cache to 256 MiB, and avoid a second full output-string allocation.
+- Decoder rejects incomplete or non-SIXEL DCS headers while retaining raw-payload compatibility.
+- An omitted color index now refreshes the cached drawing color from register 0.
+- Encoder enforces decoder-compatible dimensions and canvas area, including the complete last six-pixel band.
+- Encoder rounds RGB palette channels to the nearest SIXEL percentage instead of always rounding down.
+
 ## [0.6.0] - 2026-08-19
 
 ### Added
