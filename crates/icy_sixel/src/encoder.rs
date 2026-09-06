@@ -144,7 +144,7 @@ pub(crate) fn sixel_encode_impl(
     let mut opacity_mask = BitMask::zeros(pixel_count);
     let mut opaque_count = 0;
     let mut rgb_pixels: Vec<Srgb<u8>> = Vec::with_capacity(pixel_count);
-    for (i, c) in rgba.chunks_exact(4).enumerate() {
+    for (i, c) in rgba.as_chunks::<4>().0.iter().enumerate() {
         if c[3] >= 128 {
             opacity_mask.set(i);
             opaque_count += 1;

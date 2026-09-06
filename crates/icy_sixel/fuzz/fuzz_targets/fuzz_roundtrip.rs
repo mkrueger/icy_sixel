@@ -35,8 +35,8 @@ fuzz_target!(|input: FuzzInput| {
     assert!((height..=height.div_ceil(6) * 6).contains(&decoded.height));
     assert_eq!(decoded.pixels.len(), decoded.width * decoded.height * 4);
     // Quantization changes RGB, but the binary alpha mask must survive exactly.
-    for (source, result) in pixels.chunks_exact(4).zip(decoded.pixels.chunks_exact(4)) {
+    for (source, result) in pixels.as_chunks::<4>().0.iter().zip(decoded.pixels.as_chunks::<4>().0) {
         assert_eq!(result[3], if source[3] < 128 { 0 } else { 255 });
     }
-    assert!(decoded.pixels[expected_size..].chunks_exact(4).all(|pixel| pixel[3] == 0));
+    assert!(decoded.pixels[expected_size..].as_chunks::<4>().0.iter().all(|pixel| pixel[3] == 0));
 });

@@ -47,7 +47,7 @@ fn transparent_pixels_do_not_consume_palette_colors() {
             let encoded = image.encode_with(&options).unwrap();
             let decoded = SixelImage::decode(encoded.as_bytes()).unwrap();
 
-            assert!(decoded.pixels[..4000].chunks_exact(4).all(|pixel| pixel[3] == 0));
+            assert!(decoded.pixels[..4000].as_chunks::<4>().0.iter().all(|pixel| pixel[3] == 0));
             assert_eq!(&decoded.pixels[4000..4004], &[255, 0, 0, 255]);
             assert_eq!(&decoded.pixels[4004..4008], &[0, 0, 255, 255]);
         }
@@ -90,6 +90,6 @@ fn fully_transparent_images_roundtrip() {
         let encoded = image.encode().unwrap();
         let decoded = SixelImage::decode(encoded.as_bytes()).unwrap();
         assert_eq!(decoded.dimensions(), (width, height));
-        assert!(decoded.pixels.chunks_exact(4).all(|pixel| pixel[3] == 0));
+        assert!(decoded.pixels.as_chunks::<4>().0.iter().all(|pixel| pixel[3] == 0));
     }
 }

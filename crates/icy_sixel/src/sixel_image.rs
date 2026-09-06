@@ -316,7 +316,7 @@ impl SixelImage {
 
     /// Returns true if the image contains any transparent pixels (alpha < 128).
     pub fn has_transparency(&self) -> bool {
-        self.pixels.chunks_exact(4).any(|c| c[3] < 128)
+        self.pixels.as_chunks::<4>().0.iter().any(|c| c[3] < 128)
     }
 }
 

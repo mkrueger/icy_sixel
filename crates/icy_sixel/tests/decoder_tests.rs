@@ -197,7 +197,7 @@ fn unsized_growth_matches_pre_sized_decode() {
     assert_eq!((grown.width, grown.height), (pre_sized.width, pre_sized.height));
     assert_eq!(grown.pixels.len(), width * 6 * 4);
     assert_eq!(grown.pixels, pre_sized.pixels);
-    assert!(grown.pixels.chunks_exact(4).all(|px| px == [255, 0, 0, 255]));
+    assert!(grown.pixels.as_chunks::<4>().0.iter().all(|px| *px == [255, 0, 0, 255]));
 }
 
 #[test]

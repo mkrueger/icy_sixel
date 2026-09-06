@@ -1213,13 +1213,12 @@ unsafe fn fill_rgba_span_sse(buf: &mut [u8], color: [u8; 4]) {
     }
 
     let vec = _mm_loadu_si128(pattern.as_ptr() as *const __m128i);
-    let mut chunks = buf.chunks_exact_mut(16);
-    for chunk in &mut chunks {
+    let (chunks, remainder) = buf.as_chunks_mut::<16>();
+    for chunk in chunks {
         // Each chunk contains exactly 16 writable bytes. No pointer past the
         // allocation is computed, including when the final chunk ends there.
         _mm_storeu_si128(chunk.as_mut_ptr() as *mut __m128i, vec);
     }
-    let remainder = chunks.into_remainder();
     remainder.copy_from_slice(&pattern[..remainder.len()]);
 }
 

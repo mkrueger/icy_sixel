@@ -125,7 +125,7 @@ fn chunk_boundaries_do_not_finalize_commands() {
     }
     let image = frame.finish().unwrap();
     assert_eq!(image.dimensions(), (12, 6));
-    assert!(image.pixels.chunks_exact(4).all(|p| p == [255, 0, 0, 255]));
+    assert!(image.pixels.as_chunks::<4>().0.iter().all(|p| *p == [255, 0, 0, 255]));
 }
 
 #[test]
