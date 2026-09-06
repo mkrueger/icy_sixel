@@ -241,12 +241,12 @@ impl<'a> AnsiPayload<'a> {
                     idx += 1;
                     break;
                 }
-                0x1b | 0x9c => {
+                byte if terminates_sixel(byte) => {
                     return Err(SixelError::InvalidData("malformed SIXEL data".to_string()));
                 }
                 // Header controls may be ignored, but other final bytes or
                 // intermediates do not identify a SIXEL DCS command.
-                b'\n' | b'\r' | b'\t' | b'\x0c' => idx += 1,
+                byte if is_ignored_control(byte) => idx += 1,
                 _ => return Err(SixelError::InvalidData("invalid SIXEL DCS header".to_string())),
             }
         }
@@ -259,20 +259,11 @@ impl<'a> AnsiPayload<'a> {
         let mut payload_end = bytes.len();
         let mut cursor = payload_start;
         while cursor < bytes.len() {
-            match bytes[cursor] {
-                0x18 | 0x1a | 0x9c => {
-                    payload_end = cursor;
-                    break;
-                }
-                0x1b => {
-                    if cursor + 1 < bytes.len() && bytes[cursor + 1] == b'\\' {
-                        payload_end = cursor;
-                        break;
-                    }
-                    cursor += 1;
-                }
-                _ => cursor += 1,
+            if terminates_sixel(bytes[cursor]) {
+                payload_end = cursor;
+                break;
             }
+            cursor += 1;
         }
 
         let aspect_ratio = if param_count > 0 { Some(params[0]) } else { None };
@@ -358,7 +349,7 @@ impl SixelDecoder {
     /// Opaque undrawn pixels use register 0's color at frame start; later palette
     /// changes affect drawing and subsequent frames, not this frame's background.
     /// In transparent mode (P2=1), undrawn pixels remain transparent.
-    /// CAN/SUB stop decoding and return the partial image, preserving preceding palette changes.
+    /// CAN, SUB, ESC and C1 controls stop decoding, returning the partial image and preceding palette changes.
     pub fn decode_from_dcs(&mut self, payload: &[u8], settings: DcsSettings) -> Result<SixelImage> {
         let mut frame = FrameDecoder::new(settings, self.palette.clone())?;
         frame.process(payload)?;
@@ -504,7 +495,7 @@ impl FrameDecoder {
                     self.handle_sixel(data[idx])?;
                     idx += 1;
                 }
-                0x18 | 0x1a | 0x1b | 0x9c => break,
+                byte if terminates_sixel(byte) => break,
                 _ => idx += 1,
             }
         }
@@ -911,6 +902,16 @@ fn strip_string_terminator(data: &[u8]) -> &[u8] {
     }
 }
 
+#[inline]
+fn terminates_sixel(byte: u8) -> bool {
+    matches!(byte, 0x18 | 0x1a | 0x1b | 0x80..=0x9f)
+}
+
+#[inline]
+fn is_ignored_control(byte: u8) -> bool {
+    matches!(byte, 0x00..=0x17 | 0x19 | 0x1c..=0x1f | 0x7f)
+}
+
 fn read_number(data: &[u8], start: usize) -> (usize, usize) {
     let mut idx = start;
     let mut value: usize = 0;
@@ -919,6 +920,10 @@ fn read_number(data: &[u8], start: usize) -> (usize, usize) {
         match data[idx] {
             b'0'..=b'9' => {
                 value = value.saturating_mul(10).saturating_add((data[idx] - b'0') as usize);
+                idx += 1;
+                consumed += 1;
+            }
+            byte if is_ignored_control(byte) => {
                 idx += 1;
                 consumed += 1;
             }
@@ -953,6 +958,10 @@ fn collect_params(data: &[u8], start: usize, storage: &mut [i32]) -> (usize, usi
                 current = 0;
                 has_digit = false;
                 last_was_separator = true;
+                idx += 1;
+                consumed += 1;
+            }
+            byte if is_ignored_control(byte) => {
                 idx += 1;
                 consumed += 1;
             }

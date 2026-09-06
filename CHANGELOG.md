@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI checks formatting and Clippy for the separate fuzz workspace as well as the main workspace.
 
 ### Fixed
+- Ignorable controls no longer split SIXEL numbers or parameter lists, preserving repeats, colors and raster attributes across line breaks.
+- C1 controls terminate SIXEL decoding like their seven-bit escape equivalents, without interpreting subsequent data or palette commands.
 - CAN/SUB now terminate SIXEL payload decoding, returning the partial image and preserving only preceding palette changes.
 - Corrected P1 pixel-aspect mappings in decoding and encoding: 0/1/5/6 mean 2:1,
 	2 means 5:1, and 3/4 mean 3:1. Explicit raster attributes still take precedence.
