@@ -101,9 +101,16 @@ All encode options plus:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `-s, --speed <F>` | 1.0 | Speed multiplier |
+| `-s, --speed <F>` | 1.0 | Finite speed multiplier greater than zero |
 | `-l, --loops <N>` | 0 | Loop count (0=GIF default, -1=infinite) |
 | `-f, --frame <N>` | - | Extract single frame (0-indexed) |
+
+Frame extraction decodes only through the requested frame, preserving GIF compositing
+without reading later frames. Full animations consume raw frames one at a time and
+limit the retained SIXEL cache (including frame metadata) to 256 MiB. This is not a
+total process-memory limit: decoding and quantizing the current frame need additional memory.
+Oversized animations return an error before playback or file output begins.
+File output contains one pass of the frames and cursor sequences, without timing information.
 
 ### Pixel Aspect Ratios
 

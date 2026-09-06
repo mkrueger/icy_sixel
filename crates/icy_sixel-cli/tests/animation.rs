@@ -1,6 +1,6 @@
 use assert_cmd::Command;
 use image::codecs::gif::{GifEncoder, Repeat};
-use image::{Delay, Frame, RgbaImage};
+use image::{AnimationDecoder, Delay, Frame, RgbaImage};
 use predicates::prelude::*;
 use std::{fs::File, path::Path, time::Duration};
 
@@ -71,4 +71,56 @@ fn unrepresentable_frame_delay_returns_an_error() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("frame delay is too large"));
+}
+
+#[test]
+fn extracting_first_frame_ignores_corrupt_later_frame() {
+    use image::codecs::gif::GifDecoder;
+    use std::io::Cursor;
+
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("broken.gif");
+    write_gif(&input, Repeat::Finite(1));
+    let bytes = std::fs::read(&input).unwrap();
+    // Find a truncation that leaves frame 0 valid and frame 1 incomplete.
+    let end = (1..bytes.len())
+        .find(|&end| {
+            let Ok(decoder) = GifDecoder::new(Cursor::new(&bytes[..end])) else {
+                return false;
+            };
+            let mut frames = decoder.into_frames();
+            matches!(frames.next(), Some(Ok(_))) && matches!(frames.next(), Some(Err(_)))
+        })
+        .expect("truncated second frame");
+    std::fs::write(&input, &bytes[..end]).unwrap();
+    sixel_cmd().args(["-q", "animate", "--frame", "0"]).arg(&input).assert().success();
+    sixel_cmd().args(["-q", "animate", "--frame", "1"]).arg(&input).assert().failure();
+}
+
+#[test]
+fn frame_extraction_and_file_output_are_consistent() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("two.gif");
+    let output = dir.path().join("animation.six");
+    write_gif(&input, Repeat::Finite(1));
+    let second = sixel_cmd()
+        .args(["-q", "animate", "--frame", "1"])
+        .arg(&input)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let image = icy_sixel::SixelImage::decode(&second).unwrap();
+    assert_eq!(&image.pixels[..4], &[0, 0, 255, 255]);
+    sixel_cmd()
+        .args(["-q", "animate", "--frame", "2"])
+        .arg(&input)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("GIF has 2 frames"));
+    sixel_cmd().args(["-q", "animate", "-o"]).arg(&output).arg(&input).assert().success();
+    let bytes = std::fs::read(output).unwrap();
+    assert_eq!(bytes.windows(2).filter(|bytes| *bytes == b"\x1bP").count(), 2);
+    assert!(bytes.ends_with(&second));
 }

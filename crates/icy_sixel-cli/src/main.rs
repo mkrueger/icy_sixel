@@ -8,7 +8,7 @@ use image::codecs::gif::GifDecoder;
 use image::metadata::LoopCount;
 use image::{AnimationDecoder, ImageDecoder};
 use std::fs::File;
-use std::io::{self, BufReader, Read, Write};
+use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 use std::{fs, thread};
@@ -199,6 +199,16 @@ fn playback_loops(requested: i32, gif_loops: LoopCount) -> Option<u32> {
     }
 }
 
+const MAX_ANIMATION_CACHE_BYTES: usize = 256 * 1024 * 1024;
+
+fn animation_cache_size(used: usize, frame_capacity: usize) -> Result<usize, &'static str> {
+    // Budget string allocations plus frame metadata, including geometric Vec slack.
+    used.checked_add(frame_capacity)
+        .and_then(|bytes| bytes.checked_add(2 * std::mem::size_of::<(String, Duration)>()))
+        .filter(|&bytes| bytes <= MAX_ANIMATION_CACHE_BYTES)
+        .ok_or("animation exceeds the 256 MiB SIXEL cache limit; reduce image size or extract a single frame")
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     let quiet = cli.quiet;
@@ -304,15 +314,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let (width, height) = decoder.dimensions();
             let gif_loops = decoder.loop_count();
 
-            // Get frames
-            let frames: Vec<_> = decoder
-                .into_frames()
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| format!("Failed to decode GIF frames: {}", e))?;
-
-            if frames.is_empty() {
-                return Err("GIF has no frames".into());
-            }
+            let mut frames = decoder.into_frames();
 
             let opts = EncodeOptions {
                 max_colors: colors.clamp(2, 256),
@@ -322,24 +324,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Single frame extraction mode
             if let Some(frame_idx) = frame {
-                if frame_idx >= frames.len() {
-                    return Err(format!("Frame {} does not exist (GIF has {} frames, 0-indexed)", frame_idx, frames.len()).into());
+                let mut selected = None;
+                // Decode preceding frames for GIF disposal/compositing, but never
+                // inspect later frames or retain all preceding RGBA buffers.
+                for index in 0..=frame_idx {
+                    let decoded = frames
+                        .next()
+                        .ok_or_else(|| format!("Frame {frame_idx} does not exist (GIF has {index} frames, 0-indexed)"))?;
+                    let decoded = decoded.map_err(|e| format!("Failed to decode GIF frame {index}: {e}"))?;
+                    if index == frame_idx {
+                        selected = Some(decoded);
+                    }
                 }
 
-                info!(
-                    "Extracting frame {} from '{}' ({}x{}, {} frames)",
-                    frame_idx,
-                    input.display(),
-                    width,
-                    height,
-                    frames.len()
-                );
+                info!("Extracting frame {} from '{}' ({}x{})", frame_idx, input.display(), width, height);
 
-                let frame_data = &frames[frame_idx];
-                let rgba = frame_data.buffer();
+                let rgba = selected.ok_or("GIF has no frames")?.into_buffer();
                 let (w, h) = rgba.dimensions();
-                let pixels = rgba.as_raw();
-                let image = SixelImage::try_from_rgba(pixels.to_vec(), w as usize, h as usize)?
+                let image = SixelImage::try_from_rgba(rgba.into_raw(), w as usize, h as usize)?
                     .with_aspect_ratio(aspect_ratio.into())
                     .with_background_mode(background.into());
                 let sixel = image.encode_with(&opts)?;
@@ -358,36 +360,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             info!(
-                "Animating '{}' ({}x{}, {} frames) with {} colors, speed={:.1}x",
+                "Animating '{}' ({}x{}) with {} colors, speed={:.1}x",
                 input.display(),
                 width,
                 height,
-                frames.len(),
                 colors.clamp(2, 256),
                 speed
             );
 
-            // Pre-encode all frames to SIXEL
-            let total_frames = frames.len();
-            let encoded_frames: Vec<(String, Duration)> = frames
-                .iter()
-                .enumerate()
-                .map(|(i, frame)| {
-                    info_no_nl!("\rEncoding frame {}/{}...", i + 1, total_frames);
-                    let rgba = frame.buffer();
-                    let (w, h) = rgba.dimensions();
-                    let pixels = rgba.as_raw();
-                    let image = SixelImage::try_from_rgba(pixels.to_vec(), w as usize, h as usize)?
-                        .with_aspect_ratio(aspect_ratio.into())
-                        .with_background_mode(background.into());
-                    let sixel = image.encode_with(&opts)?;
-
-                    // Get frame delay (in milliseconds, apply speed multiplier)
-                    let duration = frame_duration(frame.delay(), speed)?;
-
-                    Ok((sixel, duration))
-                })
-                .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
+            // Consume raw frames one at a time; only bounded encoded data is cached.
+            let mut encoded_frames = Vec::new();
+            let mut cache_bytes = 0;
+            for (i, frame) in frames.enumerate() {
+                let frame = frame.map_err(|e| format!("Failed to decode GIF frame {i}: {e}"))?;
+                info_no_nl!("\rEncoding frame {}...", i + 1);
+                let duration = frame_duration(frame.delay(), speed)?;
+                let rgba = frame.into_buffer();
+                let (w, h) = rgba.dimensions();
+                let image = SixelImage::try_from_rgba(rgba.into_raw(), w as usize, h as usize)?
+                    .with_aspect_ratio(aspect_ratio.into())
+                    .with_background_mode(background.into());
+                let sixel = image.encode_with(&opts)?;
+                cache_bytes = animation_cache_size(cache_bytes, sixel.capacity())?;
+                encoded_frames.push((sixel, duration));
+            }
+            if encoded_frames.is_empty() {
+                return Err("GIF has no frames".into());
+            }
 
             info!("\rEncoded {} frames.           ", encoded_frames.len());
 
@@ -398,19 +397,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Determine if we're writing to file or terminal
             if let Some(ref path) = output {
                 // File output mode - write all frames with cursor sequences (single pass)
-                let mut file_output = String::new();
+                let mut file_output = BufWriter::new(File::create(path)?);
+                let mut written = 0;
 
                 for (i, (sixel, _delay)) in encoded_frames.iter().enumerate() {
-                    if i > 0 {
-                        file_output.push_str(RESTORE_CURSOR);
-                    } else {
-                        file_output.push_str(SAVE_CURSOR);
-                    }
-                    file_output.push_str(sixel);
+                    let cursor = if i > 0 { RESTORE_CURSOR } else { SAVE_CURSOR };
+                    file_output.write_all(cursor.as_bytes())?;
+                    file_output.write_all(sixel.as_bytes())?;
+                    written += cursor.len() + sixel.len();
                 }
 
-                fs::write(path, &file_output)?;
-                info!("Written {} bytes ({} frames) to '{}'", file_output.len(), encoded_frames.len(), path.display());
+                file_output.flush()?;
+                info!("Written {} bytes ({} frames) to '{}'", written, encoded_frames.len(), path.display());
             } else {
                 // Terminal playback mode
                 let mut remaining = playback_loops(loops, gif_loops);
@@ -485,6 +483,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     use super::*;
     use std::num::NonZeroU32;
+
+    #[test]
+    fn animation_cache_budget_includes_metadata_and_checks_overflow() {
+        let overhead = 2 * std::mem::size_of::<(String, Duration)>();
+        assert_eq!(animation_cache_size(0, 10).unwrap(), 10 + overhead);
+        assert_eq!(
+            animation_cache_size(MAX_ANIMATION_CACHE_BYTES - overhead, 0).unwrap(),
+            MAX_ANIMATION_CACHE_BYTES
+        );
+        assert!(animation_cache_size(MAX_ANIMATION_CACHE_BYTES - overhead, 1).is_err());
+        assert!(animation_cache_size(usize::MAX, 1).is_err());
+    }
 
     #[test]
     fn loop_selection_honors_metadata_and_overrides() {
