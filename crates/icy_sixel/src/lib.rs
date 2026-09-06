@@ -81,3 +81,43 @@ pub type Result<T> = core::result::Result<T, SixelError>;
 pub(crate) const SIXEL_PALETTE_MAX: usize = 256;
 pub(crate) const SIXEL_WIDTH_LIMIT: usize = 1000000;
 pub(crate) const SIXEL_HEIGHT_LIMIT: usize = 1000000;
+pub(crate) const SIXEL_CELL_HEIGHT: usize = 6;
+/// Maximum decoded canvas area (256 MiB of RGBA pixels, excluding growth overhead).
+pub(crate) const SIXEL_MAX_PIXELS: usize = 64 * 1024 * 1024;
+
+/// Reserve enough decoder space for the final SIXEL band, even if it is partly transparent.
+pub(crate) fn validate_encode_dimensions(width: usize, height: usize) -> Result<()> {
+    if width == 0 || height == 0 {
+        return Err(SixelError::InvalidDimensions { width, height });
+    }
+    // Keep arithmetic failures distinct from valid arithmetic exceeding codec limits.
+    width
+        .checked_mul(height)
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or(SixelError::IntegerOverflow)?;
+    let band_height = height
+        .div_ceil(SIXEL_CELL_HEIGHT)
+        .checked_mul(SIXEL_CELL_HEIGHT)
+        .ok_or(SixelError::IntegerOverflow)?;
+    if width > SIXEL_WIDTH_LIMIT || band_height > SIXEL_HEIGHT_LIMIT || width.saturating_mul(band_height) > SIXEL_MAX_PIXELS {
+        return Err(SixelError::InvalidDimensions { width, height });
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod dimension_tests {
+    use super::*;
+
+    #[test]
+    fn encoder_limits_include_the_complete_last_band() {
+        assert!(validate_encode_dimensions(SIXEL_WIDTH_LIMIT, 1).is_ok());
+        assert!(validate_encode_dimensions(1, 999_996).is_ok());
+        assert!(validate_encode_dimensions(1, 999_997).is_err());
+        assert!(validate_encode_dimensions(SIXEL_WIDTH_LIMIT + 1, 1).is_err());
+        // Raster area fits, but padding to a complete band must also fit.
+        assert!(validate_encode_dimensions(8192, 8184).is_ok());
+        assert!(validate_encode_dimensions(8192, 8192).is_err());
+        assert!(matches!(validate_encode_dimensions(usize::MAX, 2), Err(SixelError::IntegerOverflow)));
+    }
+}

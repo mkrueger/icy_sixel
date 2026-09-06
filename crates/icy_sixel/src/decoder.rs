@@ -3,10 +3,8 @@ use crate::{
     Result, SixelError, SIXEL_HEIGHT_LIMIT, SIXEL_PALETTE_MAX, SIXEL_WIDTH_LIMIT,
 };
 
-const SIXEL_CELL_HEIGHT: usize = 6;
+use crate::{SIXEL_CELL_HEIGHT, SIXEL_MAX_PIXELS as MAX_PIXELS};
 const MAX_REPEAT: usize = 0xffff;
-/// Upper bound on decoded pixels (256 MB of RGBA data), guarding against memory exhaustion.
-const MAX_PIXELS: usize = 64 * 1024 * 1024;
 
 #[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::{__m128i, _mm_loadu_si128, _mm_storeu_si128};

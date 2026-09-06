@@ -119,6 +119,7 @@ pub(crate) fn sixel_encode_impl(
     pixel_aspect_ratio: PixelAspectRatio,
     background_mode: BackgroundMode,
 ) -> Result<String> {
+    crate::validate_encode_dimensions(width, height)?;
     if width == 0 || height == 0 {
         return Err(SixelError::InvalidDimensions { width, height });
     }

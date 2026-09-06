@@ -81,6 +81,19 @@ let image = SixelImage::decode(sixel_data)?;
 // image.width and image.height contain dimensions
 ```
 
+### Image Size Limits
+
+Encoding accepts widths up to 1,000,000 pixels. Height rounded up to a complete
+six-pixel band must also fit within 1,000,000 pixels (maximum input height: 999,996).
+Width times this padded height must not exceed 64 × 1024 × 1024 pixels.
+Unsupported sizes return `SixelError::InvalidDimensions`; arithmetic overflow returns
+`SixelError::IntegerOverflow`. These limits apply regardless of transparency so
+encoded images fit the decoder's canvas limits. They do not guarantee a fixed peak
+memory footprint for quantization or canvas growth.
+
+`try_from_rgba()` validates the RGBA buffer, not these codec-specific limits;
+`encode()` and `encode_with()` perform the additional checks.
+
 ## Architecture
 
 ### Encoder
