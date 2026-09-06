@@ -222,9 +222,10 @@ fn encode_indexed_to_sixel(
 
     // Define palette in RGB percent (0-100)
     for (i, c) in palette.iter().enumerate() {
-        let r = (c.r as u32 * 100) / 255;
-        let g = (c.g as u32 * 100) / 255;
-        let b = (c.b as u32 * 100) / 255;
+        // Round to the nearest percentage instead of introducing a dark bias.
+        let r = (c.r as u32 * 100 + 127) / 255;
+        let g = (c.g as u32 * 100 + 127) / 255;
+        let b = (c.b as u32 * 100 + 127) / 255;
         out.push('#');
         write_number(&mut out, i);
         out.push(';');
