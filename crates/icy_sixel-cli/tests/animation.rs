@@ -124,3 +124,74 @@ fn frame_extraction_and_file_output_are_consistent() {
     assert_eq!(bytes.windows(2).filter(|bytes| *bytes == b"\x1bP").count(), 2);
     assert!(bytes.ends_with(&second));
 }
+
+#[test]
+fn gif_without_loop_extension_plays_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("no-loop.gif");
+    {
+        let mut encoder = GifEncoder::new(File::create(&path).unwrap());
+        for _ in 0..2 {
+            encoder
+                .encode_frame(Frame::new(RgbaImage::from_raw(1, 1, vec![255, 0, 0, 255]).unwrap()))
+                .unwrap();
+        }
+    }
+    let bytes = std::fs::read(&path).unwrap();
+    assert!(!bytes.windows(8).any(|bytes| bytes == b"NETSCAPE"));
+    let output = sixel_cmd().args(["-q", "animate"]).arg(&path).assert().success().get_output().stdout.clone();
+    assert_eq!(output.windows(2).filter(|bytes| *bytes == b"\x1bP").count(), 2);
+    let repeated = sixel_cmd()
+        .args(["-q", "animate", "--loops=2"])
+        .arg(&path)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    assert_eq!(repeated.windows(2).filter(|bytes| *bytes == b"\x1bP").count(), 4);
+}
+
+#[test]
+fn oversized_gif_screen_is_rejected_in_every_mode() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("huge.gif");
+    let output = dir.path().join("out.six");
+    write_gif(&input, Repeat::Finite(1));
+    let mut bytes = std::fs::read(&input).unwrap();
+    for (width, height) in [(65535u16, 65535u16), (8192, 8192)] {
+        bytes[6..8].copy_from_slice(&width.to_le_bytes());
+        bytes[8..10].copy_from_slice(&height.to_le_bytes());
+        std::fs::write(&input, &bytes).unwrap();
+        for args in [vec![], vec!["--frame=0"], vec!["-o", output.to_str().unwrap()]] {
+            sixel_cmd()
+                .args(["-q", "animate"])
+                .arg(&input)
+                .args(args)
+                .assert()
+                .code(1)
+                .stdout(predicate::str::is_empty())
+                .stderr(predicate::str::contains("GIF canvas exceeds supported dimensions"));
+        }
+        assert!(!output.exists());
+    }
+}
+
+#[test]
+fn file_export_does_not_compute_unused_frame_delays() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("finite.gif");
+    let normal = dir.path().join("normal.six");
+    let slow = dir.path().join("slow.six");
+    write_gif(&input, Repeat::Finite(1));
+    for (speed, output) in [("1", &normal), ("1e-38", &slow)] {
+        sixel_cmd()
+            .args(["-q", "animate", "--speed", speed, "-o"])
+            .arg(output)
+            .arg(&input)
+            .assert()
+            .success();
+    }
+    assert_eq!(std::fs::read(normal).unwrap(), std::fs::read(slow).unwrap());
+    sixel_cmd().args(["-q", "animate", "--speed=1e-38", "--frame=0"]).arg(&input).assert().success();
+}

@@ -322,6 +322,7 @@ impl core::fmt::Display for SixelImage {
     /// Formats the image as a SIXEL string for direct terminal output.
     ///
     /// Uses default encoding options. For custom options, use `encode_with()`.
+    /// Encoding failures produce `[SIXEL encoding failed: ...]`; use `encode()` to handle errors as a `Result`.
     ///
     /// # Example
     /// ```rust,ignore
@@ -333,7 +334,7 @@ impl core::fmt::Display for SixelImage {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self.encode() {
             Ok(sixel) => f.write_str(&sixel),
-            Err(_) => Err(core::fmt::Error),
+            Err(error) => write!(f, "[SIXEL encoding failed: {error}]"),
         }
     }
 }

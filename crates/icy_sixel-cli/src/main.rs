@@ -8,7 +8,8 @@ use image::codecs::gif::GifDecoder;
 use image::metadata::LoopCount;
 use image::{AnimationDecoder, ImageDecoder};
 use std::fs::File;
-use std::io::{self, BufReader, BufWriter, Read, Write};
+use std::io::{self, BufReader, BufWriter, Read, Seek, Write};
+use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::{fs, thread};
@@ -200,6 +201,30 @@ fn playback_loops(requested: i32, gif_loops: LoopCount) -> Option<u32> {
 }
 
 const MAX_ANIMATION_CACHE_BYTES: usize = 256 * 1024 * 1024;
+const MAX_GIF_CANVAS_PIXELS: u64 = 64 * 1024 * 1024;
+const MAX_GIF_DECODER_BYTES: u64 = 512 * 1024 * 1024;
+
+fn read_gif_loop_count(reader: &mut (impl Read + Seek)) -> Result<LoopCount, Box<dyn std::error::Error>> {
+    // image merges absent loop metadata with explicit infinite repetition.
+    let repeat = gif::DecodeOptions::new().read_info(&mut *reader)?.repeat();
+    reader.rewind()?;
+    Ok(match repeat {
+        gif::Repeat::Infinite => LoopCount::Infinite,
+        gif::Repeat::Finite(count) => LoopCount::Finite(NonZeroU32::new(u32::from(count)).unwrap_or(NonZeroU32::MIN)),
+    })
+}
+
+fn gif_decoder_limits(width: u32, height: u32) -> Result<image::Limits, &'static str> {
+    let padded_pixels = u64::from(width).saturating_mul(u64::from(height).div_ceil(6) * 6);
+    if width == 0 || height == 0 || padded_pixels > MAX_GIF_CANVAS_PIXELS {
+        return Err("GIF canvas exceeds supported dimensions (maximum padded area: 64 Mi pixels)");
+    }
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(1_000_000);
+    limits.max_image_height = Some(999_996);
+    limits.max_alloc = Some(MAX_GIF_DECODER_BYTES);
+    Ok(limits)
+}
 
 fn animation_cache_size(used: usize, frame_capacity: usize) -> Result<usize, &'static str> {
     // Budget string allocations plus frame metadata, including geometric Vec slack.
@@ -306,13 +331,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             // Open GIF file
             let file = File::open(&input).map_err(|e| format!("Failed to open '{}': {}", input.display(), e))?;
-            let reader = BufReader::new(file);
+            let mut reader = BufReader::new(file);
+            let gif_loops = if loops == 0 && output.is_none() && frame.is_none() {
+                read_gif_loop_count(&mut reader).map_err(|e| format!("Failed to read GIF loop metadata: {e}"))?
+            } else {
+                LoopCount::Infinite
+            };
 
             // Decode GIF
-            let decoder = GifDecoder::new(reader).map_err(|e| format!("Failed to decode GIF '{}': {}", input.display(), e))?;
+            let mut decoder = GifDecoder::new(reader).map_err(|e| format!("Failed to decode GIF '{}': {}", input.display(), e))?;
 
             let (width, height) = decoder.dimensions();
-            let gif_loops = decoder.loop_count();
+            decoder.set_limits(gif_decoder_limits(width, height)?)?;
 
             let mut frames = decoder.into_frames();
 
@@ -374,7 +404,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             for (i, frame) in frames.enumerate() {
                 let frame = frame.map_err(|e| format!("Failed to decode GIF frame {i}: {e}"))?;
                 info_no_nl!("\rEncoding frame {}...", i + 1);
-                let duration = frame_duration(frame.delay(), speed)?;
+                let duration = if output.is_none() {
+                    frame_duration(frame.delay(), speed)?
+                } else {
+                    Duration::ZERO
+                };
                 let rgba = frame.into_buffer();
                 let (w, h) = rgba.dimensions();
                 let image = SixelImage::try_from_rgba(rgba.into_raw(), w as usize, h as usize)?
@@ -482,7 +516,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::num::NonZeroU32;
+
+    #[test]
+    fn gif_limits_reject_large_canvases_before_frame_allocation() {
+        assert!(gif_decoder_limits(65535, 65535).is_err());
+        assert!(gif_decoder_limits(8192, 8192).is_err());
+        assert!(gif_decoder_limits(0, 1).is_err());
+        assert!(gif_decoder_limits(u32::MAX, u32::MAX).is_err());
+        let limits = gif_decoder_limits(8192, 8184).unwrap();
+        assert_eq!(limits.max_alloc, Some(MAX_GIF_DECODER_BYTES));
+    }
+
+    #[test]
+    fn gif_frame_decoder_enforces_its_allocation_budget() {
+        use image::{Frame, RgbaImage};
+        use std::io::Cursor;
+
+        let mut bytes = Vec::new();
+        image::codecs::gif::GifEncoder::new(&mut bytes)
+            .encode_frame(Frame::new(RgbaImage::new(2, 2)))
+            .unwrap();
+        let mut decoder = GifDecoder::new(Cursor::new(bytes)).unwrap();
+        let mut limits = gif_decoder_limits(2, 2).unwrap();
+        limits.max_alloc = Some(1);
+        decoder.set_limits(limits).unwrap();
+        assert!(matches!(decoder.into_frames().next(), Some(Err(image::ImageError::Limits(_)))));
+    }
+
+    #[test]
+    fn gif_metadata_distinguishes_absent_finite_and_infinite_loops() {
+        use image::codecs::gif::{GifEncoder, Repeat};
+        use image::{Frame, RgbaImage};
+        use std::io::Cursor;
+
+        for (repeat, expected) in [(None, Some(1)), (Some(Repeat::Finite(3)), Some(3)), (Some(Repeat::Infinite), None)] {
+            let mut bytes = Vec::new();
+            {
+                let mut encoder = GifEncoder::new(&mut bytes);
+                if let Some(repeat) = repeat {
+                    encoder.set_repeat(repeat).unwrap();
+                }
+                encoder.encode_frame(Frame::new(RgbaImage::new(1, 1))).unwrap();
+            }
+            let mut reader = Cursor::new(bytes);
+            assert_eq!(playback_loops(0, read_gif_loop_count(&mut reader).unwrap()), expected);
+            assert_eq!(reader.position(), 0);
+            assert!(GifDecoder::new(reader).unwrap().into_frames().next().unwrap().is_ok());
+        }
+    }
 
     #[test]
     fn animation_cache_budget_includes_metadata_and_checks_overflow() {

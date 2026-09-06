@@ -7,14 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Breaking:** Encoding rejects images the decoder cannot read back, instead of attempting them. Width may
+	not exceed 1,000,000, height padded to a complete six-pixel band may not exceed 1,000,000 (999,996 input
+	rows), and the padded area may not exceed 64 Mi pixels. Such sizes return `SixelError::InvalidDimensions`.
+- **Breaking:** The decoder rejects incomplete or non-SIXEL DCS headers, which previously decoded as empty
+	1x1 images. Raw payloads without a DCS introducer remain supported.
+- **Breaking (CLI):** `--speed` must be finite and greater than zero, and `--loops` accepts `-1` or higher;
+	other values are reported as usage errors. `--loops 0` now follows the GIF's own loop count as documented.
+- Encoded output differs from previous releases because palette channels are rounded to the nearest SIXEL
+	percentage rather than always downward.
+- The CLI requires `image` 0.25.10 or later and uses `gif` directly to distinguish absent loop metadata from infinite repetition.
+- CI checks formatting and Clippy for the separate fuzz workspace as well as the main workspace.
+
 ### Fixed
-- CLI animation validates speed and loop options, honors GIF loop metadata, and rejects unrepresentable frame delays.
-- GIF frame extraction stops at the requested frame; full animations decode raw frames incrementally,
-	bound the SIXEL cache to 256 MiB, and avoid a second full output-string allocation.
-- Decoder rejects incomplete or non-SIXEL DCS headers while retaining raw-payload compatibility.
+- CLI checks GIF canvas size and sets a decoder allocation budget before decoding frames, including single-frame extraction.
+- GIFs without a loop extension play once by default instead of repeating indefinitely.
+- `SixelImage` formatting writes an explicit error placeholder on encoding failure instead of causing `to_string()` to panic.
+- GIF file export no longer computes unused playback delays, so very small valid speed multipliers do not prevent export.
+- CLI animation reports unrepresentable frame delays instead of silently saturating them.
+- GIF frame extraction stops at the requested frame, so a corrupt later frame no longer prevents it. Full
+	animations decode raw frames incrementally, bound the SIXEL cache to 256 MiB, and avoid a second full
+	output-string allocation.
 - An omitted color index now refreshes the cached drawing color from register 0.
-- Encoder enforces decoder-compatible dimensions and canvas area, including the complete last six-pixel band.
-- Encoder rounds RGB palette channels to the nearest SIXEL percentage instead of always rounding down.
 - Encoder splits long runs at 65,535 repetitions so its output stays within the decoder's repeat limit.
 - Encoder rejects overflowing RGBA sizes and scratch-buffer sizes with an error instead of panicking,
 	and checks dimension conversions before passing them to quantette.
@@ -28,9 +43,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 	preallocation, canvas growth, or palette changes within the frame. Transparent backgrounds remain transparent.
 - Fuzz targets use the current encoder options and decoder API. Roundtrip fuzzing now rejects encode/decode
 	failures for valid input and checks dimensions, buffer length, and alpha preservation.
-
-### Changed
-- CI checks formatting and Clippy for the separate fuzz workspace as well as the main workspace.
 
 ## [0.6.0] - 2026-08-19
 

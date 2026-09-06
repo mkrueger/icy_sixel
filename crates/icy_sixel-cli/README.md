@@ -110,7 +110,12 @@ without reading later frames. Full animations consume raw frames one at a time a
 limit the retained SIXEL cache (including frame metadata) to 256 MiB. This is not a
 total process-memory limit: decoding and quantizing the current frame need additional memory.
 Oversized animations return an error before playback or file output begins.
-File output contains one pass of the frames and cursor sequences, without timing information.
+Before decoding frames, the padded GIF canvas is limited to 64 Mi pixels and the
+image decoder receives a 512 MiB allocation budget. This decoder budget excludes
+quantization and the SIXEL cache and is not a total process-memory limit.
+GIFs without a loop extension play once by default; explicit loop options override metadata.
+File output contains one pass of the frames and cursor sequences, without timing information;
+valid speed multipliers therefore have no effect on exported files.
 
 ### Pixel Aspect Ratios
 
