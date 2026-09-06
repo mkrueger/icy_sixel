@@ -221,22 +221,13 @@ impl<'a> AnsiPayload<'a> {
             }
         };
 
-        let payload_start = idx;
-        let mut payload_end = bytes.len();
-        let mut cursor = payload_start;
-        while cursor < bytes.len() {
-            if terminates_sixel(bytes[cursor]) {
-                payload_end = cursor;
-                break;
-            }
-            cursor += 1;
-        }
-
         Ok(AnsiPayload {
             aspect_ratio: settings.aspect_ratio,
             zero_color: settings.zero_color,
             grid_size: settings.grid_size,
-            payload: &bytes[payload_start..payload_end],
+            // The shared payload parser stops at the first terminator. Avoid scanning
+            // the complete image once here and then again while decoding it.
+            payload: &bytes[idx..],
         })
     }
 }
@@ -346,6 +337,7 @@ impl SixelDecoder {
     ///
     /// The session borrows this decoder until finished, aborted or dropped. Only a successful
     /// [`SixelStreamDecoder::finish`] commits its palette; dropping it discards the entire frame.
+    #[inline]
     pub fn begin_frame(&mut self, settings: DcsSettings) -> Result<SixelStreamDecoder<'_>> {
         let frame = FrameDecoder::new(settings, self.palette.clone())?;
         Ok(SixelStreamDecoder {
@@ -453,16 +445,17 @@ impl SixelStreamDecoder<'_> {
     /// After CAN/SUB or another terminator it returns the partial image. Call [`Self::abort`]
     /// instead to discard it. Errors, including errors discovered at EOF, never commit a palette.
     pub fn finish(mut self) -> Result<SixelImage> {
-        let mut frame = self.frame.take().ok_or_else(|| SixelError::InvalidData("stream decoder has failed".into()))?;
+        let frame = self.frame.as_mut().ok_or_else(|| SixelError::InvalidData("stream decoder has failed".into()))?;
         frame.finish_command()?;
         let aspect_ratio = frame
             .raster_aspect_ratio
             .unwrap_or_else(|| self.settings.aspect_ratio.map(PixelAspectRatio::from_p1).unwrap_or_default());
-        let (pixels, width, height, palette) = frame.finalize()?;
+        let (pixels, width, height) = frame.finalize()?;
 
         // Mirrors the decoded pixels: only P2=1 leaves undrawn pixels transparent.
         let background_mode = BackgroundMode::from_p2(self.settings.zero_color.unwrap_or(0));
-        self.decoder.palette = palette;
+        // Commit only after finalization succeeds, without moving the whole frame.
+        self.decoder.palette.clone_from(&frame.palette);
 
         Ok(SixelImage {
             pixels,
@@ -554,6 +547,7 @@ impl<const N: usize> Parameters<N> {
 }
 
 impl FrameDecoder {
+    #[inline]
     fn new(settings: DcsSettings, palette: Palette) -> Result<Self> {
         let repeat = 1usize;
         let current_color = palette.rgb_bytes(0);
@@ -619,6 +613,20 @@ impl FrameDecoder {
         let mut idx = 0usize;
         while idx < data.len() {
             let byte = data[idx];
+            if (b'?'..=b'~').contains(&byte) {
+                if !matches!(self.command, PayloadCommand::Data) {
+                    self.finish_command()?;
+                }
+                // Drawing cannot change the parser command state within a SIXEL run.
+                loop {
+                    self.handle_sixel(data[idx])?;
+                    idx += 1;
+                    if idx == data.len() || !(b'?'..=b'~').contains(&data[idx]) {
+                        break;
+                    }
+                }
+                continue;
+            }
             if is_ignored_control(byte) {
                 idx += 1;
                 continue;
@@ -650,7 +658,6 @@ impl FrameDecoder {
                 b'!' => self.command = PayloadCommand::Repeat(0),
                 b'#' => self.command = PayloadCommand::Color(Parameters::new()),
                 b'"' => self.command = PayloadCommand::Raster(Parameters::new()),
-                b'?'..=b'~' => self.handle_sixel(byte)?,
                 byte if terminates_sixel(byte) => {
                     return Ok(SixelFeedResult {
                         consumed: idx,
@@ -696,7 +703,9 @@ impl FrameDecoder {
             return Err(SixelError::InvalidData("malformed SIXEL data".to_string()));
         }
 
-        self.canvas.ensure_visible(width_needed, height_needed, self.background)?;
+        if width_needed > self.canvas.width || height_needed > self.canvas.height {
+            self.canvas.ensure_visible(width_needed, height_needed, self.background)?;
+        }
 
         // Use cached color for performance
         let color = self.current_color;
@@ -828,7 +837,7 @@ impl FrameDecoder {
         Ok(())
     }
 
-    fn finalize(mut self) -> Result<(Vec<u8>, usize, usize, Palette)> {
+    fn finalize(&mut self) -> Result<(Vec<u8>, usize, usize)> {
         let width = self.max_x + 1;
         let height = self.max_y + 1;
         let desired_width = width.max(self.target_width.max(1));
@@ -836,7 +845,7 @@ impl FrameDecoder {
         self.guard_dimensions(desired_width, desired_height)?;
         self.canvas.ensure_visible(desired_width, desired_height, self.background)?;
         let (width, height) = (self.canvas.width, self.canvas.height);
-        Ok((self.canvas.into_pixels(), width, height, self.palette))
+        Ok((self.canvas.take_pixels(), width, height))
     }
 }
 
@@ -1024,11 +1033,11 @@ impl Canvas {
     }
 
     /// Returns tightly packed RGBA rows, dropping any unused capacity padding.
-    fn into_pixels(mut self) -> Vec<u8> {
+    fn take_pixels(&mut self) -> Vec<u8> {
         let row_bytes = self.width * 4;
         if self.stride == self.width {
             self.data.truncate(row_bytes * self.height);
-            return self.data;
+            return std::mem::take(&mut self.data);
         }
 
         let mut out = vec![0u8; row_bytes * self.height];
@@ -1040,7 +1049,8 @@ impl Canvas {
         out
     }
 
-    #[inline]
+    // Avoid up to six out-of-line calls per SIXEL in the larger streaming parser.
+    #[inline(always)]
     fn paint_span(&mut self, y: usize, x: usize, len: usize, color: [u8; 4]) {
         if len == 0 || y >= self.height || x >= self.width {
             return;

@@ -71,6 +71,39 @@ sixel animate animation.gif
 sixel decode image.six -o output.png
 ```
 
+## Decoder Performance: Batch vs. Streaming
+
+The current development version supports both one-shot decoding with
+`SixelImage::decode()` and incremental decoding with
+`SixelDecoder::begin_dcs()` / `feed()` / `finish()`. Both use the same decoding
+core; streaming avoids buffering the entire encoded input, but still retains
+the growing RGBA canvas. Streaming is not yet included in the published 0.6.0 release.
+
+Measured on 2026-09-06 with Linux x86_64, AMD Ryzen 9 9950X3D and Rust 1.96.0,
+after the decoder optimizations in this development version:
+
+| Fixture | Batch (non-streaming) | Streaming, 1-byte chunks | Streaming, 1-KiB chunks | Streaming, 8-KiB chunks |
+|---------|-----------------------|--------------------------|-------------------------|-------------------------|
+| Test page | 67.41 µs | 127.87 µs | 68.87 µs | 69.73 µs |
+| Beelitz photo | 6.79 ms | 11.35 ms | 6.49 ms | 6.45 ms |
+| Transparency | 46.26 µs | 101.94 µs | 47.30 µs | 47.61 µs |
+
+With 1-KiB chunks, streaming latency was within about **5% of batch decoding**
+for these fixtures. Feeding one byte at a time took **1.7–2.2× as long** because
+of per-call overhead. Prefer buffered chunks when available; streaming is useful
+for consuming incoming terminal data without waiting for the entire DCS sequence.
+Small apparent streaming wins can reflect CPU scheduling and clock variation,
+not an inherently faster decoder.
+
+These are Criterion point estimates from the same `streaming/*` benchmark group
+(30 samples, 1-second warm-up, 2-second measurement target). Each case includes a
+fresh decoder, allocation, parsing, finalization and image disposal, with embedded
+input and no timed file I/O. They compare current APIs, not old and new releases.
+See the [benchmark documentation](crates/icy_sixel/benches/README.md) for methodology,
+historical comparisons and profiling, and the
+[library README](crates/icy_sixel/README.md#incremental-complete-dcs-decoding)
+for streaming usage and termination semantics.
+
 ## Building
 
 ```bash

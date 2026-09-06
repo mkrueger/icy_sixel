@@ -1,7 +1,37 @@
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use icy_sixel::SixelImage;
-use std::fs;
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use icy_sixel::{DcsSettings, SixelDcsFeedStatus, SixelDecoder, SixelFeedStatus, SixelImage};
 use std::hint::black_box;
+use std::time::Duration;
+
+struct Fixture {
+    name: &'static str,
+    data: &'static [u8],
+    header: &'static [u8],
+    settings: DcsSettings,
+}
+
+fn real_files() -> [Fixture; 3] {
+    [
+        Fixture {
+            name: "test_page",
+            data: include_bytes!("../tests/data/test_page.six"),
+            header: b"\x1bPq",
+            settings: DcsSettings::default(),
+        },
+        Fixture {
+            name: "beelitz",
+            data: include_bytes!("../tests/data/beelitz_heilstätten.six"),
+            header: b"\x1bPq",
+            settings: DcsSettings::default(),
+        },
+        Fixture {
+            name: "transparency",
+            data: include_bytes!("../tests/data/transparency.six"),
+            header: b"\x1bP0;1;0q",
+            settings: DcsSettings::new(Some(0), Some(1), Some(0)),
+        },
+    ]
+}
 
 // Simple SIXEL test data
 const SIMPLE_SIXEL: &[u8] = b"\x1bPq#0;2;100;0;0#0~~~\x1b\\";
@@ -55,29 +85,83 @@ fn bench_repeated_decode(c: &mut Criterion) {
 fn bench_real_files(c: &mut Criterion) {
     let mut group = c.benchmark_group("real_files");
 
-    // Test with map8.six if it exists
-    if let Ok(map8_data) = fs::read("tests/data/map8.six") {
-        group.bench_with_input(BenchmarkId::new("decode", "map8"), &map8_data, |b, data| {
-            b.iter(|| {
-                let result = SixelImage::decode(black_box(data));
-                assert!(result.is_ok());
-                result
-            })
-        });
-    }
-
-    // Test with snake.six if it exists
-    if let Ok(snake_data) = fs::read("tests/data/snake.six") {
-        group.bench_with_input(BenchmarkId::new("decode", "snake"), &snake_data, |b, data| {
-            b.iter(|| {
-                let result = SixelImage::decode(black_box(data));
-                assert!(result.is_ok());
-                result
-            })
+    for Fixture { name, data, .. } in real_files() {
+        group.throughput(Throughput::Bytes(data.len() as u64));
+        group.bench_with_input(BenchmarkId::new("decode", name), &data, |b, data| {
+            b.iter(|| SixelImage::decode(black_box(data)).unwrap())
         });
     }
 
     group.finish();
+}
+
+fn decode_payload_chunks(data: &[u8], settings: DcsSettings, chunk_size: usize) -> SixelImage {
+    let mut decoder = SixelDecoder::new();
+    let mut frame = decoder.begin_frame(settings).unwrap();
+    for chunk in data.chunks(chunk_size) {
+        if matches!(frame.feed(chunk).unwrap().status, SixelFeedStatus::Terminated(_)) {
+            break;
+        }
+    }
+    frame.finish().unwrap()
+}
+
+fn decode_dcs_chunks(data: &[u8], chunk_size: usize) -> SixelImage {
+    let mut decoder = SixelDecoder::new();
+    let mut frame = decoder.begin_dcs();
+    for chunk in data.chunks(chunk_size) {
+        if frame.feed(chunk).unwrap().status != SixelDcsFeedStatus::NeedMoreData {
+            break;
+        }
+    }
+    frame.finish().unwrap()
+}
+
+fn assert_same_image(actual: SixelImage, expected: &SixelImage) {
+    assert_eq!(actual.dimensions(), expected.dimensions());
+    assert_eq!(actual.pixels, expected.pixels);
+    assert_eq!(actual.aspect_ratio, expected.aspect_ratio);
+    assert_eq!(actual.background_mode, expected.background_mode);
+}
+
+fn bench_streaming(c: &mut Criterion) {
+    let simple = Fixture {
+        name: "simple",
+        data: SIMPLE_SIXEL,
+        header: b"\x1bPq",
+        settings: DcsSettings::default(),
+    };
+    for Fixture { name, data, header, settings } in std::iter::once(simple).chain(real_files()) {
+        let payload = data.strip_prefix(header).expect("fixture DCS header changed");
+        let expected = SixelImage::decode(data).unwrap();
+        assert_same_image(SixelImage::decode_from_dcs(payload, settings).unwrap(), &expected);
+        let mut group = c.benchmark_group(format!("streaming/{name}"));
+        group
+            .sample_size(30)
+            .warm_up_time(Duration::from_secs(1))
+            .measurement_time(Duration::from_secs(2));
+
+        group.throughput(Throughput::Bytes(data.len() as u64));
+        group.bench_function("batch_dcs", |b| b.iter(|| SixelImage::decode(black_box(data)).unwrap()));
+        group.throughput(Throughput::Bytes(payload.len() as u64));
+        group.bench_function("batch_payload", |b| {
+            b.iter(|| SixelImage::decode_from_dcs(black_box(payload), settings).unwrap())
+        });
+
+        for (label, chunk_size) in [("1", 1), ("64", 64), ("1024", 1024), ("8192", 8192), ("full", usize::MAX)] {
+            // Validate outside timing; every path measures initialization, decoding and image disposal.
+            assert_same_image(decode_payload_chunks(payload, settings, chunk_size), &expected);
+            assert_same_image(decode_dcs_chunks(data, chunk_size), &expected);
+
+            group.throughput(Throughput::Bytes(payload.len() as u64));
+            group.bench_function(BenchmarkId::new("payload", label), |b| {
+                b.iter(|| decode_payload_chunks(black_box(payload), settings, chunk_size))
+            });
+            group.throughput(Throughput::Bytes(data.len() as u64));
+            group.bench_function(BenchmarkId::new("dcs", label), |b| b.iter(|| decode_dcs_chunks(black_box(data), chunk_size)));
+        }
+        group.finish();
+    }
 }
 
 fn bench_varying_sizes(c: &mut Criterion) {
@@ -180,7 +264,8 @@ criterion_group!(
     bench_real_files,
     bench_varying_sizes,
     bench_color_changes,
-    bench_canvas_growth
+    bench_canvas_growth,
+    bench_streaming
 );
 
 criterion_main!(benches);

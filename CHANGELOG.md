@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 	headers and ST, explicit cancellation/interruption and remainder ownership, and strict EOF validation.
 
 ### Changed
+- Decoder processes contiguous SIXEL characters without repeated parameter dispatch and inlines pixel-span drawing to reduce streaming-parser overhead.
+- Decoder avoids large frame-state copies during streaming finalization and a redundant full-payload scan during batch DCS decoding.
 - **Breaking:** Encoding rejects images the decoder cannot read back, instead of attempting them. Width may
 	not exceed 1,000,000, height padded to a complete six-pixel band may not exceed 1,000,000 (999,996 input
 	rows), and the padded area may not exceed 64 Mi pixels. Such sizes return `SixelError::InvalidDimensions`.

@@ -1,5 +1,27 @@
 use icy_sixel::{BackgroundMode, DcsSettings, PixelAspectRatio, SixelDecoder, SixelFeedStatus, SixelImage};
 
+#[test]
+fn normal_runs_preserve_all_masks_and_consume_repeat_once() {
+    let settings = DcsSettings::default().with_background_mode(BackgroundMode::Transparent);
+    let mut input = b"#1;2;100;0;0!3".to_vec();
+    input.extend(b'?'..=b'~');
+    input.extend_from_slice(b"\x1b\\ignored");
+    let mut pixels = vec![0; 66 * 6 * 4];
+    for mask in 1..64usize {
+        for y in 0..6 {
+            if mask & (1 << y) != 0 {
+                let offset = (y * 66 + mask + 2) * 4;
+                pixels[offset..offset + 4].copy_from_slice(&[255, 0, 0, 255]);
+            }
+        }
+    }
+    for size in 1..=input.len() {
+        let image = incremental(input.chunks(size), settings).unwrap();
+        assert_eq!(image.dimensions(), (66, 6));
+        assert_eq!(image.pixels, pixels, "chunk size {size}");
+    }
+}
+
 fn assert_image(actual: &SixelImage, expected: &SixelImage) {
     assert_eq!(actual.dimensions(), expected.dimensions());
     assert_eq!(actual.pixels, expected.pixels);
@@ -159,6 +181,44 @@ fn explicit_eof_flushes_pending_palette_and_raster() {
     frame.finish().unwrap();
     let next = decoder.decode_from_dcs(b"#42@", DcsSettings::default()).unwrap();
     assert_eq!(&next.pixels[..4], &[255, 0, 0, 255]);
+}
+
+#[test]
+fn finalization_preserves_all_registers_and_packed_pixels() {
+    let mut decoder = SixelDecoder::new();
+    let settings = DcsSettings::default().with_background_mode(BackgroundMode::Transparent);
+    let mut frame = decoder.begin_frame(settings).unwrap();
+    let mut expected_row = Vec::new();
+    let mut drawing = String::new();
+    for index in 0..256 {
+        let channels = [index % 101, (index * 3) % 101, (index * 7) % 101];
+        let [r, g, b] = channels;
+        assert_eq!(
+            frame.feed(format!("#{index};2;{r};{g};{b}").as_bytes()).unwrap().status,
+            SixelFeedStatus::NeedMoreData
+        );
+        expected_row.extend(channels.map(|value| ((value * 255 + 50) / 100) as u8));
+        expected_row.push(255);
+        drawing.push_str(&format!("#{index}~"));
+    }
+    // The last register is still pending until finish; no pixels were drawn.
+    assert_eq!(frame.finish().unwrap().pixels, vec![0; 4]);
+
+    // Exercise both direct buffer extraction and packing a padded canvas.
+    let mut images = Vec::new();
+    for extra_blank in [false, true] {
+        let mut frame = decoder.begin_frame(settings).unwrap();
+        assert_eq!(frame.feed(drawing.as_bytes()).unwrap().status, SixelFeedStatus::NeedMoreData);
+        if extra_blank {
+            assert_eq!(frame.feed(b"?").unwrap().status, SixelFeedStatus::NeedMoreData);
+        }
+        images.push(frame.finish().unwrap());
+    }
+    assert_eq!(images[0].dimensions(), (256, 6));
+    assert_eq!(images[0].pixels, expected_row.repeat(6));
+    expected_row.extend([0; 4]);
+    assert_eq!(images[1].dimensions(), (257, 6));
+    assert_eq!(images[1].pixels, expected_row.repeat(6));
 }
 
 #[test]
