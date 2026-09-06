@@ -260,7 +260,7 @@ impl<'a> AnsiPayload<'a> {
         let mut cursor = payload_start;
         while cursor < bytes.len() {
             match bytes[cursor] {
-                0x9c => {
+                0x18 | 0x1a | 0x9c => {
                     payload_end = cursor;
                     break;
                 }
@@ -358,6 +358,7 @@ impl SixelDecoder {
     /// Opaque undrawn pixels use register 0's color at frame start; later palette
     /// changes affect drawing and subsequent frames, not this frame's background.
     /// In transparent mode (P2=1), undrawn pixels remain transparent.
+    /// CAN/SUB stop decoding and return the partial image, preserving preceding palette changes.
     pub fn decode_from_dcs(&mut self, payload: &[u8], settings: DcsSettings) -> Result<SixelImage> {
         let mut frame = FrameDecoder::new(settings, self.palette.clone())?;
         frame.process(payload)?;
@@ -503,7 +504,7 @@ impl FrameDecoder {
                     self.handle_sixel(data[idx])?;
                     idx += 1;
                 }
-                0x1b | 0x9c => break,
+                0x18 | 0x1a | 0x1b | 0x9c => break,
                 _ => idx += 1,
             }
         }

@@ -49,11 +49,15 @@ to the short summary thingie) describes these parameters this way:
                            (Vertical:Horizontal)
 
                Omitted     2:1
-               0 or 1      5:1
-               2           3:1
-               3 or 4      2:1
+              0 or 1      2:1
+              2           5:1
+              3 or 4      3:1
                5 or 6      2:1
                7,8, or 9   1:1
+
+            Editorial correction: the P1 table above follows the VT330/VT340
+            Programmer Reference Manual, chapter 14:
+            https://www.vt100.net/docs/vt3xx-gp/chapter14.html
 
           P2 selects how the terminal draws the background color.   You can 3$
           use one of three values.

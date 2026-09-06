@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI checks formatting and Clippy for the separate fuzz workspace as well as the main workspace.
 
 ### Fixed
+- CAN/SUB now terminate SIXEL payload decoding, returning the partial image and preserving only preceding palette changes.
+- Corrected P1 pixel-aspect mappings in decoding and encoding: 0/1/5/6 mean 2:1,
+	2 means 5:1, and 3/4 mean 3:1. Explicit raster attributes still take precedence.
 - CLI checks GIF canvas size and sets a decoder allocation budget before decoding frames, including single-frame extraction.
 - GIFs without a loop extension play once by default instead of repeating indefinitely.
 - `SixelImage` formatting writes an explicit error placeholder on encoding failure instead of causing `to_string()` to panic.

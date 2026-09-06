@@ -56,17 +56,19 @@ impl BackgroundMode {
 /// Other raster ratios fall back to P1, or to square pixels if P1 is absent.
 ///
 /// The P1 parameter in the DCS introducer maps to these ratios (vertical:horizontal):
-/// - P1 = 0, 1: 5:1 - very tall pixels
-/// - P1 = 2: 3:1 - tall pixels
-/// - P1 = 3, 4, 5, 6: 2:1 - moderately tall pixels
+/// - P1 = 0, 1, 5, 6: 2:1 - moderately tall pixels
+/// - P1 = 2: 5:1 - very tall pixels
+/// - P1 = 3, 4: 3:1 - tall pixels
 /// - P1 = 7, 8, 9: 1:1 - square pixels (recommended for modern terminals)
+///
+/// See the [VT330/VT340 reference](https://www.vt100.net/docs/vt3xx-gp/chapter14.html).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PixelAspectRatio {
-    /// 5:1 aspect ratio (vertical:horizontal) - very tall pixels (P1=0,1)
+    /// 5:1 aspect ratio (vertical:horizontal) - very tall pixels (P1=2)
     Ratio5To1,
-    /// 3:1 aspect ratio - tall pixels (P1=2)
+    /// 3:1 aspect ratio - tall pixels (P1=3,4)
     Ratio3To1,
-    /// 2:1 aspect ratio - moderately tall pixels (P1=3,4,5,6)
+    /// 2:1 aspect ratio - moderately tall pixels (P1=0,1,5,6)
     Ratio2To1,
     /// 1:1 aspect ratio - square pixels (P1=7,8,9, default for modern terminals)
     #[default]
@@ -79,9 +81,9 @@ impl PixelAspectRatio {
     /// Maps the DCS P1 parameter to the corresponding aspect ratio.
     pub fn from_p1(p1: u16) -> Self {
         match p1 {
-            0 | 1 => Self::Ratio5To1,
-            2 => Self::Ratio3To1,
-            3..=6 => Self::Ratio2To1,
+            0 | 1 | 5 | 6 => Self::Ratio2To1,
+            2 => Self::Ratio5To1,
+            3 | 4 => Self::Ratio3To1,
             7..=9 => Self::Square,
             _ => Self::Square,
         }
@@ -90,9 +92,9 @@ impl PixelAspectRatio {
     /// Returns the P1 parameter value for the DCS introducer.
     pub fn to_p1_value(self) -> u8 {
         match self {
-            Self::Ratio5To1 => 0,
-            Self::Ratio3To1 => 2,
-            Self::Ratio2To1 => 3,
+            Self::Ratio5To1 => 2,
+            Self::Ratio3To1 => 3,
+            Self::Ratio2To1 => 0,
             Self::Square => 9,
         }
     }

@@ -254,7 +254,7 @@ fn test_decode_simple_sixel() {
 #[test]
 fn test_decode_with_aspect_ratio() {
     // Test that aspect ratio is parsed from DCS params
-    let sixel_data = b"\x1bP2q#0;2;100;0;0#0~~\x1b\\"; // P1=2 means aspect 3:1
+    let sixel_data = b"\x1bP2q#0;2;100;0;0#0~~\x1b\\"; // P1=2 means aspect 5:1
 
     let result = SixelImage::decode(sixel_data);
     assert!(result.is_ok(), "Decoding should succeed");
@@ -262,7 +262,7 @@ fn test_decode_with_aspect_ratio() {
     let image = result.unwrap();
     assert!(image.width > 0);
     assert!(image.height >= 6);
-    assert_eq!(image.aspect_ratio, PixelAspectRatio::Ratio3To1);
+    assert_eq!(image.aspect_ratio, PixelAspectRatio::Ratio5To1);
 }
 
 #[test]
