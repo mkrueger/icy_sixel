@@ -216,6 +216,7 @@ impl<'a> AnsiPayload<'a> {
         let mut param_count = 0usize;
         let mut current: u16 = 0;
         let mut has_digit = false;
+        let mut command_found = false;
 
         while idx < bytes.len() {
             match bytes[idx] {
@@ -235,6 +236,7 @@ impl<'a> AnsiPayload<'a> {
                     idx += 1;
                 }
                 b'q' => {
+                    command_found = true;
                     if param_count < params.len() && (has_digit || param_count > 0) {
                         params[param_count] = if has_digit { current } else { 0 };
                         param_count += 1;
@@ -245,12 +247,15 @@ impl<'a> AnsiPayload<'a> {
                 0x1b | 0x9c => {
                     return Err(SixelError::InvalidData("malformed SIXEL data".to_string()));
                 }
-                _ => idx += 1,
+                // Header controls may be ignored, but other final bytes or
+                // intermediates do not identify a SIXEL DCS command.
+                b'\n' | b'\r' | b'\t' | b'\x0c' => idx += 1,
+                _ => return Err(SixelError::InvalidData("invalid SIXEL DCS header".to_string())),
             }
         }
 
-        if idx > bytes.len() {
-            return Err(SixelError::InvalidData("malformed SIXEL data".to_string()));
+        if !command_found {
+            return Err(SixelError::InvalidData("missing SIXEL DCS command".to_string()));
         }
 
         let payload_start = idx;
