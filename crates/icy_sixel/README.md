@@ -25,7 +25,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-icy_sixel = "0.5"
+icy_sixel = "0.7"
 ```
 
 ## Usage
@@ -283,6 +283,9 @@ Performance measurements on the test image (596×936 pixels, beelitz_heilstätte
 
 ### Decoder Performance
 
+The timings below are historical. For the 0.7.0 batch/streaming comparison and
+profiling results, see the [decoder benchmark documentation](https://github.com/mkrueger/icy_sixel/blob/main/crates/icy_sixel/benches/README.md).
+
 | Benchmark | Time |
 |-----------|------|
 | Simple SIXEL | 151 ns |
@@ -313,7 +316,7 @@ Performance measurements on the test image (596×936 pixels, beelitz_heilstätte
 
 Licensed under either of
 
-- Apache License, Version 2.0
-- MIT license
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
 
 at your option.

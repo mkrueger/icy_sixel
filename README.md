@@ -51,10 +51,10 @@ cargo install icy_sixel-cli
 ### Library Usage
 
 ```rust
-use icy_sixel::{sixel_encode, EncodeOptions};
+use icy_sixel::SixelImage;
 
 let rgba = vec![255, 0, 0, 255]; // Red pixel
-let sixel = sixel_encode(&rgba, 1, 1, &EncodeOptions::default())?;
+let sixel = SixelImage::try_from_rgba(rgba, 1, 1)?.encode()?;
 print!("{}", sixel);
 ```
 
@@ -73,14 +73,14 @@ sixel decode image.six -o output.png
 
 ## Decoder Performance: Batch vs. Streaming
 
-The current development version supports both one-shot decoding with
+Version 0.7.0 supports both one-shot decoding with
 `SixelImage::decode()` and incremental decoding with
 `SixelDecoder::begin_dcs()` / `feed()` / `finish()`. Both use the same decoding
 core; streaming avoids buffering the entire encoded input, but still retains
-the growing RGBA canvas. Streaming is not yet included in the published 0.6.0 release.
+the growing RGBA canvas. Streaming was introduced in 0.7.0 and is not available in 0.6.x.
 
 Measured on 2026-09-06 with Linux x86_64, AMD Ryzen 9 9950X3D and Rust 1.96.0,
-after the decoder optimizations in this development version:
+after the decoder optimizations for 0.7.0:
 
 | Fixture | Batch (non-streaming) | Streaming, 1-byte chunks | Streaming, 1-KiB chunks | Streaming, 8-KiB chunks |
 |---------|-----------------------|--------------------------|-------------------------|-------------------------|

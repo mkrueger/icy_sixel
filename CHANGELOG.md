@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-06
+
 ### Added
 - Incremental SIXEL payload decoding through `SixelDecoder::begin_frame()` and `SixelStreamDecoder::feed()`/`finish()`/`abort()`.
 - Streaming sessions preserve commands across arbitrary chunks, report consumed bytes and unconsumed terminators, and commit shared palettes only on successful completion.
@@ -14,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 	headers and ST, explicit cancellation/interruption and remainder ownership, and strict EOF validation.
 
 ### Changed
+- Published library and CLI packages include both MIT and Apache-2.0 license texts.
 - Decoder processes contiguous SIXEL characters without repeated parameter dispatch and inlines pixel-span drawing to reduce streaming-parser overhead.
 - Decoder avoids large frame-state copies during streaming finalization and a redundant full-payload scan during batch DCS decoding.
 - **Breaking:** Encoding rejects images the decoder cannot read back, instead of attempting them. Width may
