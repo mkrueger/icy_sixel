@@ -579,6 +579,7 @@ impl FrameDecoder {
 
         if params.is_empty() {
             self.color_index = 0;
+            self.current_color = self.palette.rgb_bytes(0);
             return Ok(consumed);
         }
 
