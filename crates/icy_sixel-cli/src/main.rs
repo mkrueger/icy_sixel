@@ -5,6 +5,7 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use icy_sixel::{BackgroundMode, EncodeOptions, PixelAspectRatio, QuantizeMethod, SixelImage};
 use image::codecs::gif::GifDecoder;
+use image::metadata::LoopCount;
 use image::{AnimationDecoder, ImageDecoder};
 use std::fs::File;
 use std::io::{self, BufReader, Read, Write};
@@ -150,11 +151,11 @@ enum Commands {
         background: BackgroundArg,
 
         /// Number of times to loop (0 = use GIF's loop count, -1 = infinite)
-        #[arg(short, long, default_value = "0")]
+        #[arg(short, long, default_value = "0", allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))]
         loops: i32,
 
         /// Speed multiplier (e.g., 2.0 = twice as fast, 0.5 = half speed)
-        #[arg(short, long, default_value = "1.0")]
+        #[arg(short, long, default_value = "1.0", allow_hyphen_values = true, value_parser = parse_speed)]
         speed: f32,
 
         /// Extract a single frame (0-indexed) instead of animating
@@ -171,6 +172,31 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+}
+
+fn parse_speed(value: &str) -> Result<f32, String> {
+    let speed: f32 = value.parse().map_err(|_| "speed must be a finite number greater than zero".to_string())?;
+    if !speed.is_finite() || speed <= 0.0 {
+        return Err("speed must be a finite number greater than zero".to_string());
+    }
+    Ok(speed)
+}
+
+fn frame_duration(delay: image::Delay, speed: f32) -> Result<Duration, &'static str> {
+    let (numerator, denominator) = delay.numer_denom_ms();
+    let seconds = f64::from(numerator) / f64::from(denominator) / f64::from(speed) / 1000.0;
+    Duration::try_from_secs_f64(seconds.max(0.001)).map_err(|_| "frame delay is too large for the requested speed")
+}
+
+fn playback_loops(requested: i32, gif_loops: LoopCount) -> Option<u32> {
+    match requested {
+        -1 => None,
+        0 => match gif_loops {
+            LoopCount::Infinite => None,
+            LoopCount::Finite(count) => Some(count.get()),
+        },
+        count => Some(count as u32), // clap validates count >= -1
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -276,6 +302,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let decoder = GifDecoder::new(reader).map_err(|e| format!("Failed to decode GIF '{}': {}", input.display(), e))?;
 
             let (width, height) = decoder.dimensions();
+            let gif_loops = decoder.loop_count();
 
             // Get frames
             let frames: Vec<_> = decoder
@@ -356,9 +383,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let sixel = image.encode_with(&opts)?;
 
                     // Get frame delay (in milliseconds, apply speed multiplier)
-                    let delay = frame.delay().numer_denom_ms();
-                    let delay_ms = (delay.0 as f32 / delay.1 as f32) / speed;
-                    let duration = Duration::from_millis(delay_ms.max(1.0) as u64);
+                    let duration = frame_duration(frame.delay(), speed)?;
 
                     Ok((sixel, duration))
                 })
@@ -388,25 +413,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 info!("Written {} bytes ({} frames) to '{}'", file_output.len(), encoded_frames.len(), path.display());
             } else {
                 // Terminal playback mode
-                // Determine loop count (-1 or 0 means infinite)
-                let loop_count = if loops <= 0 { usize::MAX } else { loops as usize };
+                let mut remaining = playback_loops(loops, gif_loops);
 
                 info!("Starting animation (Ctrl+C to stop)...");
 
                 let mut stdout = io::stdout();
-
-                for loop_num in 0..loop_count {
-                    for (i, (sixel, delay)) in encoded_frames.iter().enumerate() {
-                        if loop_num > 0 || i > 0 {
+                let mut started = false;
+                while remaining != Some(0) {
+                    for (sixel, delay) in &encoded_frames {
+                        if started {
                             stdout.write_all(RESTORE_CURSOR.as_bytes())?;
                         } else {
                             stdout.write_all(SAVE_CURSOR.as_bytes())?;
+                            started = true;
                         }
 
                         stdout.write_all(sixel.as_bytes())?;
                         stdout.flush()?;
 
                         thread::sleep(*delay);
+                    }
+                    if let Some(count) = &mut remaining {
+                        *count -= 1;
                     }
                 }
 
@@ -451,4 +479,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::num::NonZeroU32;
+
+    #[test]
+    fn loop_selection_honors_metadata_and_overrides() {
+        let finite = LoopCount::Finite(NonZeroU32::new(3).unwrap());
+        assert_eq!(playback_loops(0, finite), Some(3));
+        assert_eq!(playback_loops(0, LoopCount::Infinite), None);
+        assert_eq!(playback_loops(-1, finite), None);
+        assert_eq!(playback_loops(2, finite), Some(2));
+        assert_eq!(playback_loops(2, LoopCount::Infinite), Some(2));
+    }
+
+    #[test]
+    fn frame_delays_are_scaled_without_saturating_casts() {
+        let delay = image::Delay::from_numer_denom_ms(100, 1);
+        assert_eq!(frame_duration(delay, 2.0).unwrap(), Duration::from_millis(50));
+        assert_eq!(frame_duration(delay, 0.5).unwrap(), Duration::from_millis(200));
+        assert_eq!(frame_duration(image::Delay::from_numer_denom_ms(0, 1), 1.0).unwrap(), Duration::from_millis(1));
+        assert!(frame_duration(delay, f32::MIN_POSITIVE).is_err());
+    }
 }
